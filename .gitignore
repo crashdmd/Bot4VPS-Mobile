@@ -1,0 +1,56 @@
+# Local Android tools, IDE files and generated outputs
+/.build-env/
+.gradle/
+.kotlin/
+build/
+local.properties
+.idea/
+.vscode/
+*.iml
+*.hprof
+captures/
+
+# Private signing material and local credentials
+/.signing/
+/.singning/
+/signing/
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pem
+*.key
+*.properties
+!gradle.properties
+!gradle/wrapper/gradle-wrapper.properties
+.env
+.env.*
+/config.json
+/credentials.json
+/secrets.json
+
+# Generated APKs; only the published artifact belongs in Git
+*.apk
+!/apk/Bot4VPS-Mobile-*-release.apk
+*.aab
+*.apks
+*.idsig
+
+# Tests and local reports
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+*.log
+/.local-build/
+/.local-archives/
+/AGENTS.md
+/CLAUDE.md
+/reports/
+/coverage/
+.DS_Store
+Thumbs.db
+*.swp
+*.bak
+*.tmp
