@@ -2,6 +2,8 @@ package com.bot4vps.mobile.data.repository
 
 import com.bot4vps.mobile.data.api.Bot4VpsApi
 import com.bot4vps.mobile.data.local.PreferencesManager
+import com.bot4vps.mobile.data.local.AppLockManager
+import com.bot4vps.mobile.data.local.SensitiveKeyStorage
 import com.bot4vps.mobile.data.model.MeResponse
 import com.bot4vps.mobile.di.ApiFactory
 import kotlinx.coroutines.flow.Flow
@@ -21,7 +23,9 @@ class AuthRepository @Inject constructor(
     private val prefs: PreferencesManager,
     private val apiFactory: ApiFactory,
     private val cookies: SessionCookieJar,
-    private val mobile: MobileAccessClient
+    private val mobile: MobileAccessClient,
+    private val operationKeys: SensitiveKeyStorage,
+    private val appLock: AppLockManager
 ) {
     val baseUrl: Flow<String?> = prefs.baseUrl
     val username: Flow<String?> = prefs.username
@@ -60,7 +64,12 @@ class AuthRepository @Inject constructor(
     suspend fun logout() {
         prefs.baseUrl.first()?.let { base ->
             // Old HTTP settings need no network request to disconnect.
-            withContext(Dispatchers.IO) { runCatching { PanelUrl.endpoint(base, "/api/me") }.getOrNull()?.let(mobile::forget) }
+            val seedId = appLock.sensitiveSeedId
+            withContext(Dispatchers.IO) {
+                runCatching { PanelUrl.endpoint(base, "/api/me") }.getOrNull()?.let { url ->
+                    mobile.forget(url) { origin -> operationKeys.remove(origin, seedId) }
+                }
+            }
         }
         cookies.clear()
         prefs.clearSession()

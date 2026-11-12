@@ -62,21 +62,21 @@ if not (env / "jdk/bin/java").exists():
         top = Path(tar.getmembers()[0].name).parts[0]
         tar.extractall(env, filter="data")
     (env / "jdk").symlink_to(env / top, target_is_directory=True)
-if not (env / "gradle-8.9/bin/gradle").exists():
-    base = "https://downloads.gradle.org/distributions/gradle-8.9-bin.zip"
+if not (env / "gradle-8.14.7/bin/gradle").exists():
+    base = "https://downloads.gradle.org/distributions/gradle-8.14.7-bin.zip"
     checksum = fetch(base + ".sha256").decode()
     try:
-        path = archive(base, "gradle.zip", checksum)
+        path = archive(base, "gradle-8.14.7-bin.zip", checksum)
     except subprocess.CalledProcessError:
-        release = json.loads(fetch("https://api.github.com/repos/gradle/gradle-distributions/releases/tags/v8.9.0"))
-        asset = next(item for item in release["assets"] if item["name"] == "gradle-8.9-bin.zip")
-        partial = env / "gradle.zip.part"
+        release = json.loads(fetch("https://api.github.com/repos/gradle/gradle-distributions/releases/tags/v8.14.7"))
+        asset = next(item for item in release["assets"] if item["name"] == "gradle-8.14.7-bin.zip")
+        partial = env / "gradle-8.14.7-bin.zip.part"
         subprocess.run(["curl", "--fail", "--location", "--silent", "--show-error", "--connect-timeout", "10", "--max-time", "300", "--header", "Accept: application/octet-stream", "--output", str(partial), asset["url"] + "?download=1"], check=True)
-        partial.rename(env / "gradle.zip")
-        path = archive(base, "gradle.zip", checksum)
+        partial.rename(env / "gradle-8.14.7-bin.zip")
+        path = archive(base, "gradle-8.14.7-bin.zip", checksum)
     with zipfile.ZipFile(path) as z:
         z.extractall(env)
-    (env / "gradle-8.9/bin/gradle").chmod(0o755)
+    (env / "gradle-8.14.7/bin/gradle").chmod(0o755)
 sdk = env / "android-sdk"
 def install_sdk_package(package_path, target, marker):
     if (target / marker).exists(): return

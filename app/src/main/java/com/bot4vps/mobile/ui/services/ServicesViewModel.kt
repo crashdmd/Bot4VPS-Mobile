@@ -12,9 +12,9 @@ import kotlinx.coroutines.flow.*
 import javax.inject.Inject
 
 data class ServicesState(val selected: ServiceKind? = null, val rows: List<ServiceServer> = emptyList(),
-    val filter: InstallationFilter = InstallationFilter.ALL, val search: String = "", val group: String? = null,
+    val filter: InstallationFilter = InstallationFilter.ALL, val search: String = "",
     val order: List<String> = emptyList(), val loaded: Boolean = false, val loading: Boolean = false, val error: String? = null, val sortByName: Boolean = false) {
-    val filtered get() = filterServiceServers(rows, filter, search, group).let { list ->
+    val filtered get() = filterServiceServers(rows, filter, search, null).let { list ->
         if (sortByName) list.sortedBy { it.name.lowercase() }
         else list.sortedBy { order.indexOf(it.id).let { index -> if (index < 0) Int.MAX_VALUE else index } }
     }
@@ -34,7 +34,6 @@ class ServicesViewModel @Inject constructor(private val saved: SavedStateHandle,
     }
     fun filter(value: InstallationFilter) { _state.update { it.copy(filter = value) } }
     fun search(value: String) { _state.update { it.copy(search = value) } }
-    fun group(value: String?) { _state.update { it.copy(group = value) } }
     fun sort() { _state.update { it.copy(sortByName = !it.sortByName) } }
     fun refresh() { fetch(false) }
     private fun fetch(background: Boolean) {

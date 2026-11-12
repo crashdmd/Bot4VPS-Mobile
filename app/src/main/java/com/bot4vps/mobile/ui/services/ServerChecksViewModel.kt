@@ -19,4 +19,7 @@ class ServerChecksViewModel @Inject constructor(panel: NativePanelClient) : View
     fun select(kind: ServerCheckKind) = checks.select(kind)
     fun run() = checks.run()
     fun refresh() = checks.refresh()
+    fun hideResults() = checks.hideResults()
+    fun showResults() = checks.showResults()
+    fun sort() = checks.sort()
 }

@@ -146,10 +146,11 @@ class MobileAccessClient(private val keys: MobileDeviceKeys, private val json: J
         }
     }
 
-    fun forget(url: HttpUrl) {
+    fun forget(url: HttpUrl, removeOperationKeys: (String) -> Unit = {}) {
         val origin = origin(url)
         runBlocking { lockFor(origin).withLock {
             synchronized(this@MobileAccessClient) {
+                removeOperationKeys(origin)
                 sessions.remove(origin)
                 pinnedClients.clear()
                 keys.forget(origin)

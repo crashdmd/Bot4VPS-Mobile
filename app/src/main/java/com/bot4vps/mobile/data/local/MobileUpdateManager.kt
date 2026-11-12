@@ -12,8 +12,10 @@ data class MobileUpdateState(val checking: Boolean = false, val progress: Int? =
     val error: String? = null, val notice: String? = null)
 
 @Singleton
-class MobileUpdateManager @Inject constructor(val prefs: PreferencesManager, private val updater: MobileAppUpdater) {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+class MobileUpdateManager internal constructor(val prefs: AppUpdatePreferences, private val updater: AppReleaseUpdater,
+    private val scope: CoroutineScope, private val clock: () -> Long = System::currentTimeMillis) {
+    @Inject constructor(prefs: PreferencesManager, updater: MobileAppUpdater) : this(
+        prefs, updater, CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate))
     private val mutable = MutableStateFlow(MobileUpdateState())
     val state = mutable.asStateFlow()
     private var job: Job? = null
@@ -21,10 +23,11 @@ class MobileUpdateManager @Inject constructor(val prefs: PreferencesManager, pri
         if (job?.isActive == true) return
         job = scope.launch {
             try {
-                if (!manual && (!prefs.appAutoUpdate.first() || System.currentTimeMillis() - prefs.appUpdateCheckAt.first() in 0L..86_400_000L)) return@launch
+                if (!manual && (!prefs.appAutoUpdate.first() || clock() - prefs.appUpdateCheckAt.first() in 0L..86_400_000L)) return@launch
                 mutable.value = mutable.value.copy(checking = true, error = null, notice = null)
-                prefs.rememberAppUpdateCheck(System.currentTimeMillis())
                 val release = updater.check()
+                currentCoroutineContext().ensureActive()
+                prefs.rememberAppUpdateCheck(clock())
                 mutable.value = mutable.value.copy(release = release, dialog = release != null, file = null,
                     notice = if (manual && release == null) "Новых версий приложения нет" else null)
             } catch (e: CancellationException) { throw e }

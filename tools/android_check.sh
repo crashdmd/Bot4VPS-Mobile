@@ -11,6 +11,6 @@ export GRADLE_USER_HOME="$build_env/gradle-cache"
 export PATH="$JAVA_HOME/bin:$PATH"
 cd -- "$mobile_dir"
 if [[ $# -eq 0 ]]; then set -- :app:assembleDebug; fi
-exec nice -n 10 "$build_env/gradle-8.9/bin/gradle" --no-daemon --max-workers=1 --console=plain \
+exec nice -n 10 "$build_env/gradle-8.14.7/bin/gradle" --no-daemon --max-workers=1 --console=plain \
     -Dorg.gradle.vfs.watch=false '-Dorg.gradle.jvmargs=-Xmx1024m -XX:MaxMetaspaceSize=384m' \
     -Pkotlin.compiler.execution.strategy=in-process "$@"

@@ -9,6 +9,9 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -51,8 +54,16 @@ class PanelSettingsViewModel @Inject constructor(saved: SavedStateHandle, val cl
     var notice by mutableStateOf<String?>(null); private set
     var mobileConnection by mutableStateOf(false); private set
     private var request: Job? = null
+    private val delivery = TelegramDeliveryController(viewModelScope, { data["/api/telegram/status"] }, {
+        client.request("POST", "/api/telegram/health", body = JsonObject(emptyMap())) as? JsonObject
+            ?: error("Панель вернула некорректный результат проверки Telegram")
+    })
+    val telegramDelivery = delivery.state
+    fun testTelegramDelivery() { if (!busy && !loading) delivery.check() }
+    fun dismissTelegramError() = delivery.dismissError()
+    fun consumeTelegramMessage() = delivery.consumeMessage()
     init { refresh() }
-    fun select(value: String) { if (busy || value == category) return; category = value; error = null; notice = null; refresh() }
+    fun select(value: String) { if (busy || telegramDelivery.value.running || value == category) return; category = value; error = null; notice = null; refresh() }
     fun refresh() {
         request?.cancel()
         val selected = category
@@ -95,7 +106,7 @@ class PanelSettingsViewModel @Inject constructor(saved: SavedStateHandle, val cl
         }
     }
     fun telegram(enabled: Boolean) {
-        if (busy) return
+        if (busy || telegramDelivery.value.running) return
         val path = "/api/telegram/status"
         val old = data[path] ?: return
         busy = true; error = null; notice = null
@@ -170,15 +181,20 @@ fun PanelSettingsScreen(onBack: () -> Unit, onOperation: (String) -> Unit, onLog
     val connection=remember(pendingConnection) { pendingConnection?.let { runCatching { Json.decodeFromString<PanelConnection>(it) }.getOrNull() } }
     val notifications: NotificationsViewModel? = if(viewModel.category == "telegram") hiltViewModel() else null
     val notificationState = notifications?.state?.collectAsStateWithLifecycle()?.value
-    val aboutUpdates: UpdatesViewModel? = if (viewModel.category == "about") hiltViewModel() else null
     val panelUpdates: UpdatesViewModel? = if (viewModel.category == "updates") hiltViewModel() else null
-    aboutUpdates?.let { UpdateDialogs(it) }
     val snack = remember { SnackbarHostState() }
+    val delivery by viewModel.telegramDelivery.collectAsStateWithLifecycle()
+    LaunchedEffect(delivery.message) {
+        delivery.message?.let { snack.showSnackbar(it); viewModel.consumeTelegramMessage() }
+    }
+    delivery.error?.let { message -> AlertDialog(
+        onDismissRequest = viewModel::dismissTelegramError,
+        title = { Text("Ошибка доставки сообщения") },
+        text = { SelectionContainer { Column(Modifier.verticalScroll(rememberScrollState())) { Text(message) } } },
+        confirmButton = { TextButton(onClick = viewModel::dismissTelegramError) { Text("Ок") } })
+    }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     LaunchedEffect(lifecycle, viewModel) { lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) { viewModel.refresh(); awaitCancellation() } }
-    LaunchedEffect(lifecycle, aboutUpdates) {
-        aboutUpdates?.let { updates -> lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) { updates.observe() } }
-    }
     LaunchedEffect(notifications) { notifications?.refresh() }
     var tlsModes by remember { mutableStateOf(false) }
     var masterKeyView by remember { mutableStateOf(false) }
@@ -255,13 +271,16 @@ fun PanelSettingsScreen(onBack: () -> Unit, onOperation: (String) -> Unit, onLog
                     val telegram = viewModel.data["/api/telegram/status"]
                     val status = telegram?.get("status") as? JsonObject
                     SettingRow("Бот включён", status?.text("error") ?: if (status?.text("state") == "running") "Бот работает" else "Бот остановлен") {
-                        Switch(telegram?.flag("enabled") == true, viewModel::telegram, enabled = telegram != null && !viewModel.busy)
+                        Switch(telegram?.flag("enabled") == true, viewModel::telegram, enabled = telegram != null && !viewModel.busy && !delivery.running)
                     }
                     HorizontalDivider()
                     InfoRow("Токен бота", if (telegram?.flag("token_set") == true) "Настроен" else "Не задан")
                     InfoRow("Получатель", telegram?.text("user_id") ?: "Не задан")
-                    PanelSecondaryButton(onClick = { open("POST /api/telegram/settings") }, enabled=telegram!=null && !viewModel.busy, modifier=Modifier.fillMaxWidth()) { Text("Настроить подключение") }
-                    PanelSecondaryButton(onClick = { open("POST /api/telegram/health") }, enabled=telegram!=null && !viewModel.busy, modifier=Modifier.fillMaxWidth()) { Text("Проверить доставку сообщения") }
+                    PanelSecondaryButton(onClick = { open("POST /api/telegram/settings") }, enabled=telegram!=null && !viewModel.busy && !delivery.running, modifier=Modifier.fillMaxWidth()) { Text("Настроить подключение") }
+                    if (canTestTelegramDelivery(telegram)) PanelSecondaryButton(onClick = viewModel::testTelegramDelivery,
+                        enabled = !viewModel.busy && !viewModel.loading && !delivery.running, modifier = Modifier.fillMaxWidth()) {
+                        Text(if (delivery.running) "Отправляем…" else "Проверить доставку сообщения")
+                    }
                     if (telegram?.flag("enabled") == true && status?.text("state") != "running") PanelSecondaryButton(onClick = { open("POST /api/telegram/start") }) { Text("Запустить бота") }
                 } }
                 notificationState?.let { telegramDeliveryItems(it, notifications!!) }
@@ -285,10 +304,7 @@ fun PanelSettingsScreen(onBack: () -> Unit, onOperation: (String) -> Unit, onLog
                     } }
                 }
                 "about" -> {
-                    item { PanelAboutCard(viewModel.data["/api/ping"]?.text("version"),
-                        { aboutUpdates?.currentNotes() }, aboutUpdates?.busy == false) }
-                    aboutUpdates?.error?.let { item { ErrorCard(it, { aboutUpdates.currentNotes() }) } }
-                    aboutUpdates?.let { updates -> if (updates.progress != null) item { UpdateProgress(updates, onLogin) } }
+                    item { PanelAboutCard(viewModel.data["/api/ping"]?.text("version")) }
                 }
             }
         }

@@ -25,9 +25,19 @@ fun ServerChecksScreen(onBack: () -> Unit, onServer: (String) -> Unit,
     val state by viewModel.state.collectAsStateWithLifecycle()
     val run = state.current
     val kind = state.selected
+    DisposableEffect(viewModel) {
+        viewModel.hideResults()
+        onDispose { viewModel.hideResults() }
+    }
     LaunchedEffect(kind) { viewModel.refresh() }
     PanelScaffold(topBar = { PanelTopBar(title = { Text("Проверки серверов") },
-        navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Назад") } }) }) { padding ->
+        navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Назад") } },
+        actions = {
+            if (state.visibleResults.isNotEmpty()) IconButton(onClick = viewModel::sort) {
+                Icon(if (run.sortAscending) Icons.Default.ArrowUpward else Icons.Default.ArrowDownward,
+                    "Сортировать ${if (kind == ServerCheckKind.ONLINE) "по пингу" else "по сроку действия"}: ${if (run.sortAscending) "от большего к меньшему" else "от меньшего к большему"}")
+            }
+        }) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 ServerCheckKind.entries.forEach { tab -> PanelTab(kind == tab, { viewModel.select(tab) },
@@ -52,26 +62,16 @@ fun ServerChecksScreen(onBack: () -> Unit, onServer: (String) -> Unit,
                 if (run.running) LinearProgressIndicator(Modifier.fillMaxWidth())
                 run.completedAt?.let { Text("Последняя проверка: ${displayTime(Instant.ofEpochMilli(it).toString())}",
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                if (run.report != null && (run.running || run.error != null)) Text("Ниже результаты предыдущего запуска",
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                run.report?.takeIf { run.completedAt != null }?.summaryLines(kind)?.forEach { line -> Text(line,
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                if (state.hasResults && !run.resultsVisible) TextButton(onClick = viewModel::showResults,
+                    enabled = !run.running && !run.refreshing) { Text("Результаты последней проверки") }
             } }
             run.error?.let { message -> item { ErrorCard(message, viewModel::refresh) } }
-            val report = run.report
-            if (report == null && !run.running && run.error == null) item { Text("Нажмите «Проверить все», чтобы получить результаты.",
-                color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            if (report != null) {
-                val rows = report.visibleServers(kind)
-                item { PanelCard("Результаты · ${rows.size}") {
-                    if (kind == ServerCheckKind.ONLINE) {
-                        val online = report.servers.count { it.available == true }
-                        val offline = report.servers.count { it.available == false }
-                        Text("В сети: $online · Офлайн: $offline · Неизвестно: ${report.servers.size - online - offline}")
-                    } else {
-                        Text("Действуют: ${rows.count { it.status == "valid" }} · Скоро истекают: ${rows.count { it.status == "warning" }}")
-                        Text("Истекли: ${rows.count { it.status == "expired" }} · Ошибки: ${rows.count { it.status == "error" }}")
-                    }
-                    if (rows.isEmpty()) Text(if (kind == ServerCheckKind.SSL) "Нет серверов с настроенной SSL-проверкой" else "Нет серверов для проверки", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                } }
+            val rows = state.visibleResults
+            if (rows.isNotEmpty()) {
+                item { Text("Результаты · ${rows.size}", style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 items(rows, key = { it.id }) { row -> CheckResultCard(row, kind) { onServer(row.id) } }
             }
         }

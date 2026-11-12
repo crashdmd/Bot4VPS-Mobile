@@ -17,7 +17,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class MobileAppUpdater @Inject constructor(@ApplicationContext private val context: Context) {
+class MobileAppUpdater @Inject constructor(@ApplicationContext private val context: Context) : AppReleaseUpdater {
     // Independent client: no panel cookies, device sessions, certificate pins or headers.
     private val client = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS)
         .callTimeout(180, TimeUnit.SECONDS).addNetworkInterceptor { chain ->
@@ -46,10 +46,10 @@ class MobileAppUpdater @Inject constructor(@ApplicationContext private val conte
             Json.parseToJsonElement(bytes.toString(Charsets.UTF_8))
         }
     }
-    suspend fun check(): MobileRelease? {
+    override suspend fun check(): MobileRelease? {
         return mobileReleaseFromDirectory(json(MobileReleaseSource.MANIFEST) as? JsonObject ?: error("Некорректные метаданные"), BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE)
     }
-    suspend fun download(release: MobileRelease, onProgress: (Int) -> Unit): File = withContext(Dispatchers.IO) {
+    override suspend fun download(release: MobileRelease, onProgress: (Int) -> Unit): File = withContext(Dispatchers.IO) {
         val directory = File(context.cacheDir, "mobile-updates").apply { mkdirs() }
         val temporary = File(directory, "download.tmp")
         val target = File(directory, "update.apk")

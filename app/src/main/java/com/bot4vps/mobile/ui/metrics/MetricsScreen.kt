@@ -141,7 +141,7 @@ fun MetricsScreen(onBack: () -> Unit, onAdvanced: (String?) -> Unit = {}, onAudi
             DatePicker(state = date)
         }
     }
-    PanelScaffold(topBar = { PanelTopBar(title = { Text("Мониторинг серверов") }, navigationIcon = { TextButton(onClick = onBack) { Text("Назад") } }, actions = { TextButton(onClick = { onAdvanced(viewModel.auditServer()) }) { Text("Аудит") } }) }) { padding ->
+    PanelScaffold(topBar = { PanelTopBar(title = { Text("Графики серверов") }, navigationIcon = { TextButton(onClick = onBack) { Text("Назад") } }, actions = { TextButton(onClick = { onAdvanced(viewModel.auditServer()) }) { Text("Аудит") } }) }) { padding ->
         Refreshable(state.busy, viewModel::refresh, Modifier.fillMaxSize().padding(padding)) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = refreshArrangement(12.dp)) {
             item { NativeField("server_id", buildJsonObject { put("type","string"); put("title","Сервер") }, state.selected?.let { JsonPrimitive(it) }, true, { (it as? JsonPrimitive)?.content?.let(viewModel::select) }, mapOf("server_id" to state.servers)) }

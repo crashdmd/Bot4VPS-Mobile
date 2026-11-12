@@ -97,11 +97,6 @@ fun ServicesScreen(onServer: (ServiceKind, String) -> Unit, onFiles: () -> Unit,
                         PanelTab(state.filter == filter, onClick = { viewModel.filter(filter) }, label = { Text("${filter.title} · $count") })
                     }
                 } }
-                val groups = state.rows.mapNotNull { it.group?.takeIf(String::isNotBlank) }.distinct().sorted()
-                if (groups.isNotEmpty()) item { LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    item { PanelTab(state.group == null, { viewModel.group(null) }, label = { Text("Все группы") }) }
-                    items(groups) { group -> PanelTab(state.group == group, { viewModel.group(group) }, label = { Text(group) }) }
-                } }
                 state.error?.let { item { ErrorCard(it, viewModel::refresh) } }
                 if (state.loading && state.rows.isEmpty()) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
                 item { Text("${state.filtered.size} серверов · ${if (state.sortByName) "по имени" else "установленные сначала"}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }

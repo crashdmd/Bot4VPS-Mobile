@@ -26,7 +26,7 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 @Singleton
 class PreferencesManager @Inject constructor(
     @ApplicationContext private val context: Context
-) {
+) : AppUpdatePreferences {
     private object Keys {
         val BASE_URL = stringPreferencesKey("base_url")
         val SESSION_COOKIE = stringPreferencesKey("session_cookie")
@@ -36,10 +36,10 @@ class PreferencesManager @Inject constructor(
     }
 
     val phoneNotifications: Flow<Boolean> = context.dataStore.data.map { it[booleanPreferencesKey("phone_notifications")] ?: false }
-    val appAutoUpdate: Flow<Boolean> = context.dataStore.data.map { it[booleanPreferencesKey("app_auto_update")] ?: true }
-    val appUpdateCheckAt: Flow<Long> = context.dataStore.data.map { it[longPreferencesKey("app_update_check_at")] ?: 0 }
-    suspend fun setAppAutoUpdate(value: Boolean) { context.dataStore.edit { it[booleanPreferencesKey("app_auto_update")] = value } }
-    suspend fun rememberAppUpdateCheck(value: Long) { context.dataStore.edit { it[longPreferencesKey("app_update_check_at")] = value } }
+    override val appAutoUpdate: Flow<Boolean> = context.dataStore.data.map { it[booleanPreferencesKey("app_auto_update")] ?: true }
+    override val appUpdateCheckAt: Flow<Long> = context.dataStore.data.map { it[longPreferencesKey("app_update_check_at")] ?: 0 }
+    override suspend fun setAppAutoUpdate(value: Boolean) { context.dataStore.edit { it[booleanPreferencesKey("app_auto_update")] = value } }
+    override suspend fun rememberAppUpdateCheck(value: Long) { context.dataStore.edit { it[longPreferencesKey("app_update_check_at")] = value } }
     suspend fun setPhoneNotifications(enabled: Boolean) { context.dataStore.edit { if (enabled && it[booleanPreferencesKey("phone_notifications")] != true) it.remove(stringSetPreferencesKey(panelKey(it, "phone_seen").name)); it[booleanPreferencesKey("phone_notifications")] = enabled } }
     val phoneCategories: Flow<Set<String>> = context.dataStore.data.map { prefs -> prefs[stringSetPreferencesKey("phone_categories")] ?: setOf("online", "tasks", "services", "ssl", "updates", "system", "backups") }
     suspend fun setPhoneCategory(category: String, enabled: Boolean) { context.dataStore.edit { prefs ->

@@ -32,6 +32,28 @@ data class ServerCheckReport(
     fun visibleServers(kind: ServerCheckKind): List<ServerCheckRow> =
         if (kind == ServerCheckKind.SSL) servers.filter { it.status != "skip" } else servers
 
+    fun summaryLines(kind: ServerCheckKind): List<String> {
+        val rows = visibleServers(kind)
+        if (kind == ServerCheckKind.SSL) return listOf(
+            "Действуют: ${rows.count { it.status == "valid" }} · Скоро истекают: ${rows.count { it.status == "warning" }}",
+            "Истекли: ${rows.count { it.status == "expired" }} · Ошибки: ${rows.count { it.status == "error" }}")
+        val online = rows.count { it.available == true }
+        val offline = rows.count { it.available == false }
+        val errors = rows.count { it.available == null && it.error.isNotBlank() }
+        return listOf("В сети: $online · Офлайн: $offline",
+            "Неизвестно: ${rows.size - online - offline - errors} · Ошибки: $errors")
+    }
+
+    fun sortedServers(kind: ServerCheckKind, ascending: Boolean): List<ServerCheckRow> {
+        fun value(row: ServerCheckRow): Double? = if (kind == ServerCheckKind.ONLINE) row.latencyMs
+            else row.daysLeft?.takeIf { row.status in setOf("valid", "warning", "expired") }?.toDouble()
+        return visibleServers(kind).sortedWith(compareBy<ServerCheckRow> { value(it) == null }
+            .thenComparator { a, b ->
+                val left = value(a); val right = value(b)
+                if (left == null || right == null) 0 else if (ascending) left.compareTo(right) else right.compareTo(left)
+            }.thenBy { (it.name ?: it.id).lowercase() }.thenBy { it.id })
+    }
+
     companion object {
         fun parse(value: JsonObject, kind: ServerCheckKind, json: Json): ServerCheckReport {
             require(value["servers"] is JsonArray) { "Панель не вернула результаты проверки" }
@@ -46,10 +68,13 @@ data class ServerCheckReport(
 }
 
 data class ServerCheckRun(val report: ServerCheckReport? = null, val running: Boolean = false,
-    val error: String? = null, val completedAt: Long? = null, val refreshing: Boolean = false)
+    val error: String? = null, val completedAt: Long? = null, val refreshing: Boolean = false,
+    val resultsVisible: Boolean = false, val sortAscending: Boolean = true)
 data class ServerChecksState(val selected: ServerCheckKind = ServerCheckKind.ONLINE,
     val runs: Map<ServerCheckKind, ServerCheckRun> = emptyMap()) {
     val current get() = runs[selected] ?: ServerCheckRun()
+    val hasResults get() = current.report?.visibleServers(selected)?.isNotEmpty() == true
+    val visibleResults get() = if (current.resultsVisible) current.report?.sortedServers(selected, current.sortAscending).orEmpty() else emptyList()
 }
 
 /** Manual checks keep independent results and refuse duplicate in-flight requests. */
@@ -60,15 +85,26 @@ class ServerChecksController(private val scope: CoroutineScope,
     private val mutable = MutableStateFlow(ServerChecksState())
     val state = mutable.asStateFlow()
 
-    fun select(kind: ServerCheckKind) { mutable.update { it.copy(selected = kind) } }
+    fun select(kind: ServerCheckKind) {
+        if (kind == state.value.selected) return
+        mutable.update { it.copy(selected = kind, runs = it.runs +
+            (kind to (it.runs[kind] ?: ServerCheckRun()).copy(resultsVisible = false))) }
+    }
+    fun hideResults() { mutable.update { it.copy(runs = it.runs.mapValues { (_, run) -> run.copy(resultsVisible = false) }) } }
+    fun showResults() {
+        if (state.value.hasResults && !state.value.current.running) update(state.value.selected) { it.copy(resultsVisible = true) }
+    }
+    fun sort() {
+        if (state.value.visibleResults.isNotEmpty()) update(state.value.selected) { it.copy(sortAscending = !it.sortAscending) }
+    }
     fun run() {
         val kind = state.value.selected
         if (state.value.runs[kind]?.let { it.running || it.refreshing } == true) return
-        update(kind) { it.copy(running = true, error = null) }
+        update(kind) { it.copy(running = true, error = null, resultsVisible = false) }
         scope.launch {
             try {
                 val report = check(kind)
-                update(kind) { it.copy(report = report, completedAt = clock(), error = null) }
+                update(kind) { it.copy(report = report, completedAt = report.completedAt ?: clock(), error = null, resultsVisible = true) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
