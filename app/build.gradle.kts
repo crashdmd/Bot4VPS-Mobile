@@ -18,8 +18,8 @@ android {
         applicationId = "com.bot4vps.mobile"
         minSdk = 26
         targetSdk = 35
-        versionCode = 31
-        versionName = "1.6.0"
+        versionCode = 39
+        versionName = "1.7.8"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

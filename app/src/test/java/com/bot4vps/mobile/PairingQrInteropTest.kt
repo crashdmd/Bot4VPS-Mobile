@@ -1,6 +1,8 @@
 package com.bot4vps.mobile
 
 import com.bot4vps.mobile.data.api.readMobileInvitation
+import com.bot4vps.mobile.data.api.MobileAddressChangeRequired
+import com.bot4vps.mobile.data.model.readConnectionChange
 import com.google.zxing.BinaryBitmap
 import com.google.zxing.MultiFormatReader
 import com.google.zxing.RGBLuminanceSource
@@ -10,6 +12,23 @@ import org.junit.Test
 import java.io.DataInputStream
 
 class PairingQrInteropTest {
+    @Test fun serverGeneratedPortChangeQrIsDecodedAndRecognizedAsMigrationInsteadOfPairing() {
+        val source = DataInputStream(javaClass.getResourceAsStream("/mobile-connection-change.gray")).use { input ->
+            val width = input.readInt(); val height = input.readInt()
+            val pixels = IntArray(width * height) {
+                val value = input.readUnsignedByte()
+                (0xff shl 24) or (value shl 16) or (value shl 8) or value
+            }
+            RGBLuminanceSource(width, height, pixels)
+        }
+        val decoded = MultiFormatReader().decode(BinaryBitmap(HybridBinarizer(source)))
+        val change = readConnectionChange(decoded.text)
+        assertEquals("https://192.0.2.10:855", change.url)
+        assertEquals("https://192.0.2.10:8444", change.oldUrl)
+        val redirect = assertThrows(MobileAddressChangeRequired::class.java) { readMobileInvitation(decoded.text) }
+        assertEquals(change, redirect.change)
+    }
+
     @Test fun serverGeneratedQrDecodesWithTheOnDeviceQrDecoder() {
         // Grayscale bytes decoded from the server PNG (synthetic invitation).
         // Two big-endian dimensions followed by one luminance byte per pixel.

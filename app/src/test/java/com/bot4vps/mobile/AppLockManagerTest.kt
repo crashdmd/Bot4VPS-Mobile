@@ -94,6 +94,65 @@ class AppLockManagerTest {
         fixture.manager.unlock("0123"); runCurrent()
         assertTrue(fixture.manager.state.value.allowsContent)
     }
+    @Test fun newlyCreatedPinStartsBiometricsWithoutRepeatingPinAndKeepsSensitiveGate() = runTest {
+        val f = fixture(null)
+        f.manager.setPin(null, "0123", "0123"); runCurrent()
+        assertTrue(f.manager.state.value.biometricEnrollmentAuthorized)
+        val original = f.storage.record!!.sensitiveSeed!!.id
+        f.manager.enableBiometric(); runCurrent()
+        val pending = f.manager.prompt.value!!
+        assertNotNull(pending.enrollmentAlias)
+        assertFalse(f.manager.state.value.biometricEnabled)
+        assertEquals(0, f.biometrics.sealCalls)
+        f.biometrics.authorized = true
+        f.manager.biometricResult(pending.cipher); runCurrent()
+        assertTrue(f.manager.state.value.biometricEnabled)
+        assertEquals(original, f.storage.record!!.sensitiveSeed!!.id)
+        assertTrue(pending.seed!!.all { it == 0.toByte() })
+        var called = false
+        backgroundScope.launch { f.manager.sensitiveOperation(null) { called = true } }
+        runCurrent(); assertFalse(called)
+        assertTrue(f.manager.prompt.value!!.sensitiveOperation)
+        f.manager.background(); runCurrent(); assertFalse(called)
+    }
+    @Test fun unlockedPinCanEnableBiometricsButBackgroundAndReloadInvalidateProof() = runTest {
+        val f = fixture(); unlock(f)
+        assertTrue(f.manager.state.value.biometricEnrollmentAuthorized)
+        f.manager.enableBiometric(); runCurrent()
+        val pending = f.manager.prompt.value!!
+        f.manager.biometricError(pending.cipher, null); runCurrent()
+        f.manager.enableBiometric(); runCurrent()
+        val retry = f.manager.prompt.value!!
+        f.manager.background(); runCurrent()
+        assertTrue(retry.seed!!.all { it == 0.toByte() })
+        f.manager.foreground(); f.manager.enableBiometric(); runCurrent()
+        assertNull(f.manager.prompt.value)
+        assertFalse(f.manager.state.value.biometricEnrollmentAuthorized)
+        unlock(f); f.manager.reload(); runCurrent()
+        f.manager.enableBiometric(); runCurrent()
+        assertNull(f.manager.prompt.value)
+        assertEquals(LockPhase.LOCKED, f.manager.state.value.phase)
+    }
+    @Test fun failedBiometricPreparationRetainsPinProofForRetry() = runTest {
+        val f = fixture(null)
+        f.manager.setPin(null, "0123", "0123"); runCurrent()
+        f.biometrics.enrollmentError = IllegalStateException("Keystore unavailable")
+        f.manager.enableBiometric(); runCurrent()
+        assertNull(f.manager.prompt.value)
+        assertFalse(f.manager.state.value.biometricEnabled)
+        assertTrue(f.manager.state.value.biometricEnrollmentAuthorized)
+        assertEquals(0, f.storage.record!!.failedAttempts)
+        f.biometrics.enrollmentError = null
+        f.manager.enableBiometric(); runCurrent()
+        assertNotNull(f.manager.prompt.value)
+    }
+    @Test fun unavailableSensitiveKeyDoesNotBlockOrdinaryPinUnlock() = runTest {
+        val f = fixture(null)
+        f.manager.setPin(null, "0123", "0123"); runCurrent()
+        f.manager.lock(); f.seedProtection.unavailable = true
+        unlock(f)
+        assertFalse(f.manager.state.value.biometricEnrollmentAuthorized)
+    }
     @Test fun samePinUnlocksEnablesBiometricsAndDisablesLock() = runTest {
         val f = fixture(); unlock(f)
         f.manager.setBiometric(true, "0123"); runCurrent()

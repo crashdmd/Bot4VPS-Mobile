@@ -160,7 +160,7 @@ private fun ServiceEditorSheet(editor: ServiceEditor, busy: Boolean, error: Stri
     fun generated() = buildString { val random = java.security.SecureRandom(); val alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"; repeat(20) { append(alphabet[random.nextInt(alphabet.length)]) } }
     var values by remember(editor) { mutableStateOf(if (editor.xuiAction == "change_password") JsonObject(editor.initial + ("password" to JsonPrimitive(generated()))) else if (editor.xuiAction == "change_path") JsonObject(editor.initial + ("path" to JsonPrimitive(generated()))) else editor.initial) }
     var confirmSite by remember(editor) { mutableStateOf(false) }
-    if (confirmSite) AlertDialog(onDismissRequest = { confirmSite = false }, title = { Text("Установить сайт-заглушку?") }, text = { Text("Для ${values.text("domain").orEmpty()} будет создан локальный HTTPS-сайт. Настройки Reality останутся без изменений.") }, confirmButton = { TextButton(onClick = { confirmSite = false; onSubmit(values) }, enabled = !busy) { Text("Установить") } }, dismissButton = { TextButton(onClick = { confirmSite = false }) { Text("Отмена") } })
+    if (confirmSite) PanelAlertDialog(onDismissRequest = { confirmSite = false }, title = { Text("Установить сайт-заглушку?") }, text = { Text("Для ${values.text("domain").orEmpty()} будет создан локальный HTTPS-сайт. Настройки Reality останутся без изменений.") }, confirmButton = { TextButton(onClick = { confirmSite = false; onSubmit(values) }, enabled = !busy) { Text("Установить") } }, dismissButton = { TextButton(onClick = { confirmSite = false }) { Text("Отмена") } })
     ModalBottomSheet(onDismissRequest = { if (!busy) onDismiss() }) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 24.dp).imePadding(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(editor.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
@@ -273,7 +273,7 @@ private fun XuiOverview(data: JsonObject, vm: ServiceDetailViewModel, operation:
     val context = LocalContext.current
     var openPanel by remember { mutableStateOf(false) }
     val url = data.text("panel_url")?.takeIf { it.startsWith("https://") || it.startsWith("http://") }
-    if (openPanel && url != null) AlertDialog(onDismissRequest = { openPanel = false }, title = { Text("Перейти в панель 3x-ui?") }, text = { Text(url) }, confirmButton = { TextButton(onClick = { openPanel = false; runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }.onFailure { Toast.makeText(context, "Не удалось открыть браузер", Toast.LENGTH_SHORT).show() } }) { Text("Открыть в браузере") } }, dismissButton = { TextButton(onClick = { openPanel = false }) { Text("Отмена") } })
+    if (openPanel && url != null) PanelAlertDialog(onDismissRequest = { openPanel = false }, title = { Text("Перейти в панель 3x-ui?") }, text = { Text(url) }, confirmButton = { TextButton(onClick = { openPanel = false; runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }.onFailure { Toast.makeText(context, "Не удалось открыть браузер", Toast.LENGTH_SHORT).show() } }) { Text("Открыть в браузере") } }, dismissButton = { TextButton(onClick = { openPanel = false }) { Text("Отмена") } })
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         PanelCard("Доступ к панели") {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {

@@ -26,7 +26,7 @@ object NetworkModule {
     fun provideJson(): Json = Json { ignoreUnknownKeys = true; explicitNulls = false; coerceInputValues = true }
 
     @Provides @Singleton
-    fun provideMobileAccess(keys: AndroidMobileDeviceKeys, json: Json): MobileAccessClient = MobileAccessClient(keys, json)
+    fun provideMobileAccess(keys: AndroidMobileDeviceKeys, json: Json, status: com.bot4vps.mobile.data.api.MobileAccessStatus): MobileAccessClient = MobileAccessClient(keys, json, onRevoked = status::report)
 
     @Provides @Singleton
     fun provideOkHttpClient(mobile: MobileAccessClient): OkHttpClient = OkHttpClient.Builder()

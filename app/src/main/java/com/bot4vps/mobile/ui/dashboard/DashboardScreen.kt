@@ -44,7 +44,11 @@ fun DashboardScreen(onBack: (() -> Unit)? = null, onServer: (String) -> Unit, on
         LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(16.dp), verticalArrangement = refreshArrangement(14.dp)) {
             item(key = "greeting") {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(when (LocalTime.now().hour) { in 5..11 -> "Доброе утро!"; in 12..17 -> "Добрый день!"; in 18..22 -> "Добрый вечер!"; else -> "Доброй ночи!" }, style = MaterialTheme.typography.headlineLarge)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(when (LocalTime.now().hour) { in 5..11 -> "Доброе утро!"; in 12..17 -> "Добрый день!"; in 18..22 -> "Добрый вечер!"; else -> "Доброй ночи!" }, style = MaterialTheme.typography.headlineLarge, modifier = Modifier.weight(1f))
+                    com.bot4vps.mobile.ui.security.LoginQrButton()
+                    com.bot4vps.mobile.ui.components.SecurityAlertButton()
+                    }
                     Text("Вот что происходит с вашей инфраструктурой", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }

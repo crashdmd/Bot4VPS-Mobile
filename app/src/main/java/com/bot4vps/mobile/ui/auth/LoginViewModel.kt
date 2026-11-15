@@ -45,7 +45,7 @@ class LoginViewModel(
         reconnect()
     }
 
-    private fun needsPairing(error: Exception) = error is MobilePairingRequired ||
+    private fun needsPairing(error: Exception) = error is MobilePairingRequired || error is com.bot4vps.mobile.data.api.MobileAccessRevoked ||
         error is javax.net.ssl.SSLHandshakeException || error is HttpException && error.code() == 428 ||
         error is IllegalArgumentException
 

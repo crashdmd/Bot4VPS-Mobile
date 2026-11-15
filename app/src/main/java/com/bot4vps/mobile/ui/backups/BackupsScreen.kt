@@ -51,7 +51,7 @@ fun BackupsScreen(onBack: () -> Unit, onOperation: (String) -> Unit, viewModel: 
     } }
     BackHandler(enabled=!state.busy) { back() }
     if(create) CreateBackupDialog(state,{ create=false }) { label,encrypted,password -> create=false; viewModel.create(label,encrypted,password) }
-    if(confirmApply) AlertDialog(onDismissRequest={ confirmApply=false }, title={ Text("Применить план восстановления?") },
+    if(confirmApply) PanelAlertDialog(onDismissRequest={ confirmApply=false }, title={ Text("Применить план восстановления?") },
         text={ Column(verticalArrangement=Arrangement.spacedBy(10.dp)) {
             Text("${state.archive?.name}\nЦель: ${state.target}")
             Text(if(state.restore.mode=="clean") "Файлы будут заменены; лишние файлы в пределах плана будут удалены." else "Файлы из архива будут добавлены или заменены. Остальные файлы сохранятся.")
@@ -59,13 +59,13 @@ fun BackupsScreen(onBack: () -> Unit, onOperation: (String) -> Unit, viewModel: 
             if(state.serverId==null) Text("Bot4VPS может перезапуститься. После восстановления может потребоваться повторный вход.")
         } },confirmButton={ TextButton(onClick={ confirmApply=false; viewModel.apply() },enabled=!state.busy && state.operation?.let(::backupPrepared)==true) { Text("Восстановить") } },
         dismissButton={ TextButton(onClick={ confirmApply=false }) { Text("Отмена") } })
-    if(confirmDelete) AlertDialog(onDismissRequest={ confirmDelete=false },title={ Text("Удалить архив?") },text={ Text("${state.archive?.name}\nАрхив будет удалён из хранилища резервных копий.") },
+    if(confirmDelete) PanelAlertDialog(onDismissRequest={ confirmDelete=false },title={ Text("Удалить архив?") },text={ Text("${state.archive?.name}\nАрхив будет удалён из хранилища резервных копий.") },
         confirmButton={ TextButton(onClick={ confirmDelete=false; viewModel.delete() }) { Text("Удалить") } },dismissButton={ TextButton(onClick={ confirmDelete=false }) { Text("Отмена") } })
-    cancel?.let { operation -> AlertDialog(onDismissRequest={ cancel=null },title={ Text("Отменить операцию?") },text={ Text("Отмена не откатывает изменения, которые операция уже успела внести. Панель остановит её на безопасном шаге.") },
+    cancel?.let { operation -> PanelAlertDialog(onDismissRequest={ cancel=null },title={ Text("Отменить операцию?") },text={ Text("Отмена не откатывает изменения, которые операция уже успела внести. Панель остановит её на безопасном шаге.") },
         confirmButton={ TextButton(onClick={ cancel=null; viewModel.cancel(operation) }) { Text("Отменить операцию") } },dismissButton={ TextButton(onClick={ cancel=null }) { Text("Продолжить выполнение") } }) }
     if(rename) {
         var name by remember(state.archive?.key) { mutableStateOf(state.archive?.name.orEmpty()) }
-        AlertDialog(onDismissRequest={ rename=false },title={ Text("Имя архива") },text={ PanelTextField(name,{ name=it },singleLine=true,modifier=Modifier.fillMaxWidth()) },
+        PanelAlertDialog(onDismissRequest={ rename=false },title={ Text("Имя архива") },text={ PanelTextField(name,{ name=it },singleLine=true,modifier=Modifier.fillMaxWidth()) },
             confirmButton={ TextButton(onClick={ rename=false; viewModel.rename(name) },enabled=name.isNotBlank() && name.length<=255 && '/' !in name && '\\' !in name) { Text("Сохранить") } },dismissButton={ TextButton(onClick={ rename=false }) { Text("Отмена") } })
     }
     PanelScaffold(topBar={ PanelTopBar(title={ Text(when(state.page) { "settings" -> "Настройки копирования"; "restore" -> "Восстановление"; "plan" -> "План восстановления"; "archive" -> "Архив"; else -> "Резервные копии" }) },
@@ -246,7 +246,7 @@ private fun CreateBackupDialog(state: BackupsState, onDismiss: () -> Unit, onCre
     var encrypt by remember { mutableStateOf(state.settings?.flag("encrypt")==true) }
     var password by remember { mutableStateOf("") }
     val stored=state.passwordStatus?.flag("configured")==true && state.passwordStatus.flag("masterkey_available")
-    AlertDialog(onDismissRequest=onDismiss,title={ Text("Создать резервную копию") },text={ Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+    PanelAlertDialog(onDismissRequest=onDismiss,title={ Text("Создать резервную копию") },text={ Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)) {
         Text("Цель: ${state.target}",style=MaterialTheme.typography.titleSmall)
         PanelTextField(label,{ label=it },label={ Text("Описание, необязательно") },singleLine=true,modifier=Modifier.fillMaxWidth())
         ToggleSetting("Зашифровать архив","Защитить содержимое паролем",encrypt,true,{ encrypt=it })

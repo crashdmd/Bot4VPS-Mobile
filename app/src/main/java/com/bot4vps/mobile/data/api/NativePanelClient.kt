@@ -102,7 +102,7 @@ class NativePanelClient @Inject constructor(
         method: String, path: String, query: Map<String, List<String>> = emptyMap(),
         body: JsonElement? = null, form: Map<String, String> = emptyMap(), uploads: Map<String, Upload> = emptyMap(), baseUrl: String? = null
     ): JsonElement {
-        val req = buildRequest(method, path, query, body, form, uploads).let { if(baseUrl==null) it else it.newBuilder().url(PanelUrl.endpoint(baseUrl,path,query)).build() }
+        val req = buildRequest(method, path, query, body, form, uploads, baseUrl)
         return withContext(Dispatchers.IO) {
             httpClient(req.url).newCall(req).awaitResponse().use { response ->
                 requireSuccess(response)
@@ -118,7 +118,7 @@ class NativePanelClient @Inject constructor(
         }
     }
 
-    private suspend fun buildRequest(method: String, path: String, query: Map<String, List<String>>, body: JsonElement?, form: Map<String, String>, uploads: Map<String, Upload>): Request {
+    private suspend fun buildRequest(method: String, path: String, query: Map<String, List<String>>, body: JsonElement?, form: Map<String, String>, uploads: Map<String, Upload>, baseUrl: String? = null): Request {
         val payload = when {
             form.isNotEmpty() || uploads.isNotEmpty() -> MultipartBody.Builder().setType(MultipartBody.FORM).apply {
                 form.forEach { (key, value) -> addFormDataPart(key, value) }
@@ -127,7 +127,8 @@ class NativePanelClient @Inject constructor(
             method == "GET" -> null
             else -> (body?.toString() ?: "{}").toRequestBody("application/json".toMediaType())
         }
-        return Request.Builder().url(url(path, query)).method(method, payload).build()
+        val target = if (baseUrl == null) url(path, query) else PanelUrl.endpoint(baseUrl, path, query)
+        return Request.Builder().url(target).method(method, payload).build()
     }
 
     suspend fun download(method: String, path: String, query: Map<String, List<String>>, body: JsonElement?, destination: Uri) {

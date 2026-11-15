@@ -411,8 +411,8 @@ def main():
     args=parser.parse_args(); web=args.repo/'ui/web'
     classes={}; aliases={}; trees={}
     for path in sorted([web/'app.py', *(web/'routers').glob('*.py')]):
-        if path.name == 'mobile_app.py':
-            continue  # Web APK distribution is not a native panel operation.
+        if path.name in ('mobile_app.py', 'device_auth.py'):
+            continue  # Web distribution and typed device-auth flows are not generic native operations.
         tree=ast.parse(path.read_text()); trees[path]=tree
         for n in tree.body:
             if isinstance(n,ast.ClassDef): classes[n.name]=n

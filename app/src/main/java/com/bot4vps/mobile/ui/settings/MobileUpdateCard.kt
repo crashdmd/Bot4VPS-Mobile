@@ -1,5 +1,7 @@
 package com.bot4vps.mobile.ui.settings
 
+import com.bot4vps.mobile.ui.components.PanelAlertDialog
+
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
@@ -42,7 +44,7 @@ fun MobileUpdateDialog(manager: MobileUpdateManager) {
     val context = LocalContext.current
     LaunchedEffect(state.notice) { state.notice?.let { Toast.makeText(context, it, Toast.LENGTH_SHORT).show(); manager.consumeNotice() } }
     val release = state.release
-    if (state.dialog && release != null) AlertDialog(onDismissRequest = manager::close,
+    if (state.dialog && release != null) PanelAlertDialog(onDismissRequest = manager::close,
         title = { Text("Bot4VPS Mobile ${release.version}") },
         text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Новая версия приложения. Версия панели Bot4VPS не изменится.")
@@ -67,5 +69,5 @@ fun MobileUpdateDialog(manager: MobileUpdateManager) {
                 }
             } catch (e: Exception) { manager.error(e.message ?: "Не удалось открыть установку APK") }
         }) { Text(if (state.file == null) "Скачать APK" else "Установить") } },
-        dismissButton = { TextButton(onClick = manager::close) { Text(if (state.progress != null) "Отменить загрузку" else "Позже") } })
+        dismissButton = { TextButton(onClick = manager::close) { Text(if (state.progress != null) "Отменить загрузку" else "Закрыть") } })
 }

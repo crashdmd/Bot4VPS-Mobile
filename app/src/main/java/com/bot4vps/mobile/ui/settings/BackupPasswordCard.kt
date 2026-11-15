@@ -65,7 +65,7 @@ fun BackupPasswordCard(onOperation: (String) -> Unit, onChanged: () -> Unit = {}
         var password by remember { mutableStateOf("") }
         var repeat by remember { mutableStateOf("") }
         var current by remember { mutableStateOf("") }
-        AlertDialog(onDismissRequest={ if(!vm.busy) { edit=false; remove=false } },title={ Text(if(remove) "Удалить сохранённый пароль?" else if(configured) "Изменить пароль архивов" else "Пароль резервных копий") },
+        PanelAlertDialog(onDismissRequest={ if(!vm.busy) { edit=false; remove=false } },title={ Text(if(remove) "Удалить сохранённый пароль?" else if(configured) "Изменить пароль архивов" else "Пароль резервных копий") },
             text={ Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)) {
                 Text(if(remove) "Новые копии не смогут использовать этот пароль. Для существующих архивов он всё ещё понадобится." else "Старые архивы сохраняют прежний пароль. Новый пароль используется для следующих копий.",style=MaterialTheme.typography.bodySmall)
                 if(configured) PanelTextField(current,{ current=it },label={ Text("Текущий пароль") },singleLine=true,visualTransformation=PasswordVisualTransformation(),enabled=!vm.busy,modifier=Modifier.fillMaxWidth())

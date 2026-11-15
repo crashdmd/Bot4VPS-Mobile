@@ -1,5 +1,5 @@
 {
-  "version": "7.0.0",
+  "version": "7.1.0",
   "sections": {
     "dashboard": "Обзор",
     "servers": "Серверы",
@@ -3235,6 +3235,28 @@
           "name": "sparkline_points",
           "location": "query",
           "title": "Sparkline points",
+          "required": false
+        },
+        {
+          "type": "boolean",
+          "name": "match_timeline",
+          "location": "query",
+          "title": "Match timeline",
+          "required": false,
+          "default": false
+        },
+        {
+          "type": "string",
+          "name": "from",
+          "location": "query",
+          "title": "From ",
+          "required": false
+        },
+        {
+          "type": "string",
+          "name": "to",
+          "location": "query",
+          "title": "Конец периода",
           "required": false
         }
       ],

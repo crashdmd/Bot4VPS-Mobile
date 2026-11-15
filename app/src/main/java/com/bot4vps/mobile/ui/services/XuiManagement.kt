@@ -86,7 +86,7 @@ fun XuiSiteDialog(state: ServiceDetailState, vm: ServiceDetailViewModel) {
     val present = site.flag("present")
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
-    AlertDialog(onDismissRequest = vm::dismissSite,
+    PanelAlertDialog(onDismissRequest = vm::dismissSite,
         title = { Text(if (usage) "Информация для использования" else "Сайт-заглушка (SelfSNI)") },
         text = { Column(Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             when {

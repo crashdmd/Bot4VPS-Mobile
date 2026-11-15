@@ -2,24 +2,18 @@ package com.bot4vps.mobile.ui.servers
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import android.widget.Toast
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
@@ -47,8 +41,7 @@ fun ServerDetailScreen(serverId: String, onBack: () -> Unit, onTerminal: () -> U
     LaunchedEffect(lifecycle, viewModel) { lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) { while (true) { delay(5000); viewModel.poll() } } }
     var menu by remember { mutableStateOf(false) }
     var reboot by remember { mutableStateOf(false) }
-    var commandOpen by rememberSaveable { mutableStateOf(false) }
-    if (reboot) AlertDialog(onDismissRequest = { reboot = false }, title = { Text("Перезагрузить сервер?") }, text = { Text(server?.name ?: serverId) },
+    if (reboot) PanelAlertDialog(onDismissRequest = { reboot = false }, title = { Text("Перезагрузить сервер?") }, text = { Text(server?.name ?: serverId) },
         confirmButton = { TextButton(onClick = { reboot = false; viewModel.reboot() }) { Text("Перезагрузить") } }, dismissButton = { TextButton(onClick = { reboot = false }) { Text("Отмена") } })
     PanelScaffold(topBar = { PanelTopBar(title = { Text(server?.name ?: "Сервер", fontWeight = FontWeight.SemiBold) },
         navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Назад") } }, actions = {
@@ -56,7 +49,6 @@ fun ServerDetailScreen(serverId: String, onBack: () -> Unit, onTerminal: () -> U
                 DropdownMenu(menu, { menu = false }) {
                     DropdownMenuItem(text = { Text("Изменить сервер") }, onClick = { menu = false; onEdit() })
                     DropdownMenuItem(text = { Text("Проверить подключение") }, enabled = !state.busy, onClick = { menu = false; viewModel.probe() })
-                    DropdownMenuItem(text = { Text("Выполнить команду") }, enabled = !state.busy && !state.blocked, onClick = { menu = false; commandOpen = true })
                     DropdownMenuItem(text = { Text("Перезагрузить", color = MaterialTheme.colorScheme.error) }, enabled = !state.busy && !state.blocked, onClick = { menu = false; reboot = true })
                 }
             }
@@ -159,12 +151,6 @@ fun ServerDetailScreen(serverId: String, onBack: () -> Unit, onTerminal: () -> U
                     }
                 } }
             }
-            if (commandOpen) item { PanelCard("Выполнить команду") {
-                PanelTextField(state.command, viewModel::onCommandChange, label = { Text("Команда") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send), keyboardActions = KeyboardActions(onSend = { viewModel.exec() }))
-                Row { PanelButton(onClick = viewModel::exec, enabled = !state.busy && !state.blocked) { Text("Выполнить") }; TextButton(onClick = { commandOpen = false }) { Text("Закрыть") } }
-                state.execOutput?.let { SelectionContainer { Text(it, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall) } }
-            } }
             state.actionMessage?.let { item { Text(it, style = MaterialTheme.typography.bodyMedium) } }
         }
     }

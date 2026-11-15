@@ -15,6 +15,7 @@ import javax.inject.Inject
 
 data class ServersUiState(val servers: List<ServerSummary> = emptyList(), val selectedGroup: String? = null,
     val search: String = "", val summary: SummaryResponse? = null, val isLoading: Boolean = false, val error: String? = null,
+    val revealAddresses: Boolean = false,
     val sort: ServerListSort = ServerListSort.NAME, val descending: Boolean = false,
     val catalogGroups: List<String> = emptyList(), val groupDisplay: GroupDisplaySettings = GroupDisplaySettings()) {
     val groups get() = groupDisplay.visible((catalogGroups + servers.mapNotNull { it.group?.takeIf { group -> group.isNotBlank() && group != "—" } }).distinct())
@@ -28,7 +29,15 @@ class ServersViewModel @Inject constructor(private val repo: ServerRepository, p
     private val _ui = MutableStateFlow(ServersUiState())
     val uiState = _ui.asStateFlow()
     private var request: Job? = null
+    fun revealAddresses() { viewModelScope.launch { prefs.setRevealServers(!_ui.value.revealAddresses) } }
     init {
+        viewModelScope.launch { prefs.serverList.collect { choice -> _ui.update { old ->
+            old.copy(sort = choice.sort, descending = choice.descending,
+                selectedGroup = choice.group?.takeUnless { it in old.groupDisplay.hidden },
+                servers = if (old.sort != choice.sort || old.descending != choice.descending)
+                    sortServerList(old.servers, choice.sort, choice.descending) else old.servers)
+        } } }
+        viewModelScope.launch { prefs.revealServers.collect { reveal -> _ui.update { it.copy(revealAddresses = reveal) } } }
         viewModelScope.launch { groups.groups.collect { rows -> _ui.update { it.copy(catalogGroups = rows.orEmpty().map { row -> row.name }) } } }
         viewModelScope.launch { prefs.groupDisplay.collect { display -> _ui.update { old -> old.copy(groupDisplay = display,
             selectedGroup = old.selectedGroup?.takeUnless { it in display.hidden }) } } }
@@ -40,6 +49,7 @@ class ServersViewModel @Inject constructor(private val repo: ServerRepository, p
                 old.selectedGroup != null && old.selectedGroup == change.oldName -> change.newName
                 else -> old.selectedGroup
             }, servers = old.servers.map { server -> if (change.oldName != null && server.group == change.oldName) server.copy(group = change.newName) else server }) }
+            prefs.setServerGroup(_ui.value.selectedGroup)
             refresh()
         } }
         refresh()
@@ -63,13 +73,18 @@ class ServersViewModel @Inject constructor(private val repo: ServerRepository, p
             catch (e: Exception) { _ui.update { it.copy(isLoading = false, error = errorText(e)) } }
         }
     }
-    fun selectGroup(group: String?) { _ui.update { it.copy(selectedGroup = group) } }
+    fun selectGroup(group: String?) {
+        _ui.update { it.copy(selectedGroup = group) }
+        viewModelScope.launch { prefs.setServerGroup(group) }
+    }
     fun search(query: String) { _ui.update { it.copy(search = query) } }
     fun sort(key: ServerListSort) {
         _ui.update { old ->
             val descending = if (key == old.sort) !old.descending else key == ServerListSort.SSL
             old.copy(sort = key, descending = descending, servers = sortServerList(old.servers, key, descending))
         }
+        val choice = _ui.value
+        viewModelScope.launch { prefs.setServerSort(choice.sort, choice.descending) }
     }
     suspend fun observe() {
         refresh()

@@ -41,12 +41,12 @@ import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.*
 import javax.inject.Inject
 
-val settingsCategories = linkedMapOf("common" to "Параметры", "web" to "Безопасность", "telegram" to "Telegram", "notify" to "Уведомления", "data" to "Данные", "updates" to "Обновления", "about" to "О программе")
+val settingsCategories = linkedMapOf("web" to "Безопасность", "common" to "Параметры", "telegram" to "Telegram", "notify" to "Уведомления", "data" to "Данные", "updates" to "Обновления", "about" to "О программе")
 
 @HiltViewModel
 class PanelSettingsViewModel @Inject constructor(saved: SavedStateHandle, val client: NativePanelClient,
     val prefs: PreferencesManager, private val workflow: NativeWorkflow, private val mobile: MobileAccessClient, val appLock: AppLockManager, val mobileUpdates: MobileUpdateManager) : ViewModel() {
-    var category by mutableStateOf(when (saved.get<String>("section")) { "security" -> "web"; "telegram" -> "telegram"; "update" -> "updates"; "notifications" -> "notify"; else -> "common" }); private set
+    var category by mutableStateOf(when (saved.get<String>("section")) { "security" -> "web"; "telegram" -> "telegram"; "update" -> "updates"; "notifications" -> "notify"; else -> "web" }); private set
     val data = mutableStateMapOf<String, JsonObject>()
     var loading by mutableStateOf(false); private set
     var busy by mutableStateOf(false); private set
@@ -187,7 +187,7 @@ fun PanelSettingsScreen(onBack: () -> Unit, onOperation: (String) -> Unit, onLog
     LaunchedEffect(delivery.message) {
         delivery.message?.let { snack.showSnackbar(it); viewModel.consumeTelegramMessage() }
     }
-    delivery.error?.let { message -> AlertDialog(
+    delivery.error?.let { message -> PanelAlertDialog(
         onDismissRequest = viewModel::dismissTelegramError,
         title = { Text("Ошибка доставки сообщения") },
         text = { SelectionContainer { Column(Modifier.verticalScroll(rememberScrollState())) { Text(message) } } },
@@ -196,13 +196,14 @@ fun PanelSettingsScreen(onBack: () -> Unit, onOperation: (String) -> Unit, onLog
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     LaunchedEffect(lifecycle, viewModel) { lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) { viewModel.refresh(); awaitCancellation() } }
     LaunchedEffect(notifications) { notifications?.refresh() }
+    var categoriesMenu by remember { mutableStateOf(false) }
     var tlsModes by remember { mutableStateOf(false) }
     var masterKeyView by remember { mutableStateOf(false) }
     if (masterKeyView) MasterKeyViewDialog(viewModel.client, viewModel.appLock) { masterKeyView = false }
     var clear by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(viewModel.error, viewModel.notice) { (viewModel.error ?: viewModel.notice)?.let { snack.showSnackbar(it) } }
     fun open(id: String, values: Map<String, JsonElement> = emptyMap()) { viewModel.prepare(id, values); onOperation(id) }
-    clear?.let { kind -> AlertDialog(onDismissRequest = { clear = null }, title = { Text("Очистить ${if (kind == "tasks") "историю задач" else "журнал событий"}?") },
+    clear?.let { kind -> PanelAlertDialog(onDismissRequest = { clear = null }, title = { Text("Очистить ${if (kind == "tasks") "историю задач" else "журнал событий"}?") },
         text = { Text("Сохранённые записи и логи будут удалены без возможности восстановления.") },
         confirmButton = { TextButton(onClick = { clear = null; viewModel.save(if (kind == "tasks") "/api/tasks/history" else "/api/events", buildJsonObject { }, "Записи удалены", "DELETE") }) { Text("Очистить") } },
         dismissButton = { TextButton(onClick = { clear = null }) { Text("Отмена") } }) }
@@ -216,8 +217,14 @@ fun PanelSettingsScreen(onBack: () -> Unit, onOperation: (String) -> Unit, onLog
     }
     PanelScaffold(topBar = { Column {
         PanelTopBar(title = { Text("Настройки") }, navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Назад") } })
-        LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            items(settingsCategories.toList()) { (id, name) -> PanelTab(viewModel.category == id, { viewModel.select(id) }, { Text(name) }, enabled = !viewModel.busy) }
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(settingsCategories[viewModel.category].orEmpty(), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+            Box {
+                TextButton(enabled = !viewModel.busy, onClick = { categoriesMenu = true }) { Text("Раздел"); Icon(Icons.Default.ExpandMore, "Выбрать раздел настроек") }
+                DropdownMenu(categoriesMenu, { categoriesMenu = false }) {
+                    settingsCategories.forEach { (id, name) -> DropdownMenuItem(text = { Text(name) }, onClick = { categoriesMenu = false; viewModel.select(id) }) }
+                }
+            }
         }
     } }, snackbarHost = { SnackbarHost(snack) }) { padding ->
         if (viewModel.category == "updates") {
@@ -244,6 +251,7 @@ fun PanelSettingsScreen(onBack: () -> Unit, onOperation: (String) -> Unit, onLog
                 }
                 "web" -> {
                     item { AppLockSettingsCard(viewModel.appLock) }
+                    item { DeviceRoleCard() }
                     connection?.let { pending -> item { SettingsCard("Изменение подключения") { Text(pending.target); TextButton(onClick={ open(pending.operation) }) { Text("Продолжить проверку подключения") } } } }
                     item { SettingsCard("Веб-панель", "Порт и HTTPS веб-интерфейса на хосте Bot4VPS. У отдельного мобильного API собственные порт и HTTPS.") {
                         if (viewModel.mobileConnection) Text("Приложение подключено через отдельный API. Изменение веб-порта не меняет адрес приложения.", style = MaterialTheme.typography.bodySmall)

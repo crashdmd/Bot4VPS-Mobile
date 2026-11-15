@@ -87,14 +87,14 @@ fun UpdateDialogs(viewModel: UpdatesViewModel) {
             viewModel.dismissLatest()
         }
     }
-    viewModel.notes?.let { notes -> AlertDialog(onDismissRequest = viewModel::dismissNotes,
+    viewModel.notes?.let { notes -> PanelAlertDialog(onDismissRequest = viewModel::dismissNotes,
         title = { Text("Описание версии ${notes.version}") }, text = { VersionText(notes.text) },
         confirmButton = { if (notes.current && !viewModel.active) TextButton(onClick = viewModel::rollbackVersions, enabled = !viewModel.busy) { Text("Откатить") } },
         dismissButton = { TextButton(onClick = viewModel::dismissNotes) { Text("Закрыть") } }) }
     viewModel.versions?.let { versions ->
         var selected by remember(versions) { mutableStateOf(versions.firstOrNull()) }
         var all by remember(versions) { mutableStateOf(false) }
-        AlertDialog(onDismissRequest = viewModel::dismissVersions, title = { Text("Выбор версии для отката") },
+        PanelAlertDialog(onDismissRequest = viewModel::dismissVersions, title = { Text("Выбор версии для отката") },
             text = { Column {
                 Text("Текущая версия: ${viewModel.update?.text("current_version") ?: "—"}")
                 LazyColumn(Modifier.heightIn(max = 300.dp)) {
@@ -109,7 +109,7 @@ fun UpdateDialogs(viewModel: UpdatesViewModel) {
             } }, confirmButton = { TextButton(enabled = selected != null && !viewModel.busy, onClick = { viewModel.prepare("rollback", selected) }) { Text("Продолжить") } },
             dismissButton = { TextButton(onClick = viewModel::dismissVersions) { Text("Отмена") } })
     }
-    viewModel.confirmation?.let { ready -> AlertDialog(onDismissRequest = viewModel::dismissConfirmation,
+    viewModel.confirmation?.let { ready -> PanelAlertDialog(onDismissRequest = viewModel::dismissConfirmation,
         title = { Text(if(ready.kind == "restart") "Перезапустить Bot4VPS?" else if (ready.kind == "rollback") "Установить версию ${ready.notes.version}?" else "Обновить Bot4VPS до ${ready.notes.version}?") },
         text = { Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Text(if(ready.kind == "restart") "Панель временно прервёт соединения и перезапустится" else "После установки панель будет перезапущена.")
@@ -139,7 +139,7 @@ fun PanelMaintenanceDialog(viewModel: UpdatesViewModel, onLogin: () -> Unit, onF
             onFinished()
         }
     }
-    AlertDialog(onDismissRequest = { if (viewModel.run == null) viewModel.closeProgress() },
+    PanelAlertDialog(onDismissRequest = { if (viewModel.run == null) viewModel.closeProgress() },
         title = { Text(when(viewModel.operationKind) { "restart" -> "Перезапуск Bot4VPS"; "rollback" -> "Откат Bot4VPS"; else -> "Обновление Bot4VPS" }) },
         text = { Column(Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             MaintenanceProgressBody(viewModel, onLogin, autoClose)
@@ -174,7 +174,7 @@ private fun MaintenanceProgressBody(viewModel: UpdatesViewModel, onLogin: () -> 
             else if (!autoClose || progress.phase != MaintenancePhase.DONE) TextButton(onClick = viewModel::closeProgress) { Text("Закрыть") }
             if (viewModel.requiresLogin) TextButton(onClick = onLogin) { Text("Войти заново для проверки результата") }
         } }
-    if (force) AlertDialog(onDismissRequest = { force = false }, title = { Text("Остановить задачи принудительно?") },
+    if (force) PanelAlertDialog(onDismissRequest = { force = false }, title = { Text("Остановить задачи принудительно?") },
         text = { Text("Текущие и ожидающие задачи будут остановлены. Изменения на серверах не откатываются.") },
         confirmButton = { TextButton(onClick = { force = false; viewModel.control("force") }) { Text("Остановить и продолжить") } },
         dismissButton = { TextButton(onClick = { force = false }) { Text("Отмена") } })

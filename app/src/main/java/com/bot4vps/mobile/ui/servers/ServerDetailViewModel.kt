@@ -16,7 +16,7 @@ data class ServerDetailUiState(val server: ServerCore? = null, val monitor: Json
     val metrics: ServerMetrics? = null, val runningTask: TaskSummary? = null, val queue: List<TaskSummary> = emptyList(),
     val queueState: JsonObject = JsonObject(emptyMap()), val services: Map<ServiceKind, ServiceServer> = emptyMap(),
     val serviceErrors: Map<ServiceKind, String> = emptyMap(), val events: List<JsonObject> = emptyList(), val eventsError: String? = null,
-    val keyExists: Boolean? = null, val probe: ProbeResponse? = null, val command: String = "", val execOutput: String? = null,
+    val keyExists: Boolean? = null, val probe: ProbeResponse? = null,
     val isLoading: Boolean = true, val actionMessage: String? = null, val error: String? = null, val busy: Boolean = false) {
     val availability get() = monitor["availability"] as? JsonObject ?: JsonObject(emptyMap())
     val online get() = (availability["online"] as? JsonPrimitive)?.booleanOrNull
@@ -33,7 +33,6 @@ class ServerDetailViewModel @Inject constructor(saved: SavedStateHandle, private
     private var request: Job? = null
     private var ticks = 0
     init { load() }
-    fun onCommandChange(value: String) { _ui.update { it.copy(command = value) } }
     fun load() { reload(true, true) }
     private fun reload(extras: Boolean, manual: Boolean = false) {
         request?.cancel()
@@ -91,17 +90,6 @@ class ServerDetailViewModel @Inject constructor(saved: SavedStateHandle, private
         val result = repo.reboot(serverId)
         require(result.ok) { result.error ?: result.detail ?: "Не удалось отправить перезагрузку" }
         result.message ?: "Перезагрузка отправлена"
-    }
-    fun exec() {
-        if (_ui.value.busy || _ui.value.blocked) return
-        val command = _ui.value.command.trim()
-        if (command.isBlank()) { _ui.update { it.copy(actionMessage = "Введите команду") }; return }
-        action {
-            val result = repo.exec(serverId, command)
-            val output = listOfNotNull(result.stdout?.takeIf(String::isNotBlank), result.stderr?.takeIf(String::isNotBlank)).joinToString("\n")
-            _ui.update { it.copy(execOutput = "${output.ifBlank { if (result.ok) "(пусто)" else "Ошибка выполнения" }}\n[exit ${result.exitCode ?: "—"}]") }
-            "Команда выполнена"
-        }
     }
     private fun action(block: suspend () -> String) {
         if (_ui.value.busy) return

@@ -53,12 +53,12 @@ fun PanelCard(title: String? = null, modifier: Modifier = Modifier, content: @Co
 
 @Composable
 fun ActionRow(title: String, subtitle: String, icon: ImageVector, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, danger: Boolean = false, iconColor: Color? = null) {
-    val color = if (danger) MaterialTheme.colorScheme.error else iconColor ?: MaterialTheme.colorScheme.primary
+    val color = if (!enabled) MaterialTheme.colorScheme.onSurfaceVariant else if (danger) MaterialTheme.colorScheme.error else iconColor ?: MaterialTheme.colorScheme.primary
     PanelSurfaceCard(onClick = onClick, enabled = enabled, modifier = modifier.fillMaxWidth()) {
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Icon(icon, null, Modifier.size(20.dp), tint = color.copy(alpha = if (enabled) 1f else .4f))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(title, style = MaterialTheme.typography.titleSmall, color = if (danger) color else MaterialTheme.colorScheme.onSurface)
+                Text(title, style = MaterialTheme.typography.titleSmall, color = if (!enabled) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .5f) else if (danger) color else MaterialTheme.colorScheme.onSurface)
                 if (subtitle.isNotBlank()) Text(subtitle, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))

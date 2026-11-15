@@ -39,7 +39,7 @@ fun TerminalScreen(serverId: String, sessions: TerminalSessionsViewModel, onBack
         if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) session.resume(owner)
         onDispose { terminal?.hideKeyboard(); keyboard?.hide(); lifecycle.removeObserver(observer); session.pause(owner) }
     }
-    if (confirmClose) AlertDialog(onDismissRequest = { confirmClose = false },
+    if (confirmClose) PanelAlertDialog(onDismissRequest = { confirmClose = false },
         title = { Text("Завершить SSH-сессию?") },
         text = { Text("Соединение закроется сразу. При следующем открытии терминала начнётся новая сессия.") },
         confirmButton = { TextButton(onClick = { confirmClose = false; session.close(); terminal?.hideKeyboard(); keyboard?.hide(); onBack() }) { Text("Завершить") } },

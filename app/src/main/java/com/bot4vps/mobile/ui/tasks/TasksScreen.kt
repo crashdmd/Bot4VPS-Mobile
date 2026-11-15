@@ -37,12 +37,12 @@ fun TasksScreen(onEvents: () -> Unit = {}, onBack: (() -> Unit)? = null, viewMod
     var confirmClear by remember { mutableStateOf(false) }
     val snack = remember { SnackbarHostState() }
     LaunchedEffect(state.notice) { state.notice?.let { snack.showSnackbar(it); viewModel.consumeNotice() } }
-    if (confirmClear) AlertDialog(onDismissRequest = { confirmClear = false },
+    if (confirmClear) PanelAlertDialog(onDismissRequest = { confirmClear = false },
         title = { Text("Очистить историю задач?") },
         text = { Text("Будут удалены записи завершённых задач всех серверов и их сохранённые логи. Активные задачи продолжат работу.") },
         confirmButton = { TextButton(onClick = { confirmClear = false; viewModel.clearHistory() }, enabled = !state.busy) { Text("Очистить") } },
         dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("Отмена") } })
-    if (confirmCancel && selected != null) AlertDialog(onDismissRequest = { confirmCancel = false },
+    if (confirmCancel && selected != null) PanelAlertDialog(onDismissRequest = { confirmCancel = false },
         title = { Text("Отменить задачу?") }, text = { Text("Уже выполненные изменения сохранятся.") },
         confirmButton = { TextButton(onClick = { confirmCancel = false; viewModel.cancelSelected() }) { Text("Отменить задачу") } },
         dismissButton = { TextButton(onClick = { confirmCancel = false }) { Text("Назад") } })

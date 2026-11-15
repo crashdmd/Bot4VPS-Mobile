@@ -93,7 +93,7 @@ fun GroupsScreen(onBack: () -> Unit, viewModel: GroupsViewModel = hiltViewModel(
         onDismiss = { editorOpen = false },
         onSave = { name, shown -> viewModel.save(editing, name, shown) { editorOpen = false } })
     deleting?.let { group ->
-        AlertDialog(onDismissRequest = { deleting = null }, title = { Text("Удалить группу?") },
+        PanelAlertDialog(onDismissRequest = { deleting = null }, title = { Text("Удалить группу?") },
             text = { Text("Пустая группа «${group.name}» будет удалена из сервиса.") },
             confirmButton = { TextButton(onClick = { deleting = null; viewModel.delete(group) }) { Text("Удалить") } },
             dismissButton = { TextButton(onClick = { deleting = null }) { Text("Отмена") } })
@@ -181,7 +181,7 @@ private fun GroupEditor(group: ServerGroup?, groups: List<ServerGroup>, visible:
     var shown by rememberSaveable(group?.name) { mutableStateOf(visible) }
     val duplicate = groups.any { it.name == name.trim() && it.name != group?.name }
     val changed = group == null || name.trim() != group.name || shown != visible
-    AlertDialog(onDismissRequest = { if (!busy) onDismiss() },
+    PanelAlertDialog(onDismissRequest = { if (!busy) onDismiss() },
         title = { Text(if (group == null) "Новая группа" else "Редактировать группу") },
         text = {
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {

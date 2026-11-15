@@ -53,7 +53,7 @@ fun ServerSettingsScreen(onBack: () -> Unit, viewModel: ServerSettingsViewModel 
         if (state.dirty) discard = true else onBack()
     }
     BackHandler(enabled = state.action == null && state.list == null && state.editor == null && !showOutput) { leave() }
-    if (discard) AlertDialog(onDismissRequest = { discard = false }, title = { Text("Отменить изменения?") },
+    if (discard) PanelAlertDialog(onDismissRequest = { discard = false }, title = { Text("Отменить изменения?") },
         text = { Text("В настройках есть несохранённые изменения.") },
         confirmButton = { TextButton(onClick = {
             discard = false
@@ -329,7 +329,7 @@ private fun SecretSetting(value: String, enabled: Boolean, label: String, hint: 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SettingActionDialog(action: SettingAction, state: ServerSettingsState, viewModel: ServerSettingsViewModel) {
-    AlertDialog(onDismissRequest = viewModel::closeAction, title = { Text(action.decision?.title ?: action.title) },
+    PanelAlertDialog(onDismissRequest = viewModel::closeAction, title = { Text(action.decision?.title ?: action.title) },
         text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (action.decision == null && action.hint.isNotBlank()) Text(action.hint)
             action.decision?.let { decision ->
@@ -446,7 +446,7 @@ private fun SettingListSheet(list: SettingList, state: ServerSettingsState, view
 private fun SettingEditorSheet(file: SettingEditor, state: ServerSettingsState, viewModel: ServerSettingsViewModel) {
     var discardFile by remember { mutableStateOf(false) }
     fun close() { if (file.dirty && !state.busy) discardFile = true else viewModel.closeEditor() }
-    if (discardFile) AlertDialog(onDismissRequest = { discardFile = false }, title = { Text("Отменить изменения файла?") },
+    if (discardFile) PanelAlertDialog(onDismissRequest = { discardFile = false }, title = { Text("Отменить изменения файла?") },
         text = { Text("Несохранённый текст будет потерян.") }, confirmButton = { TextButton(onClick = { discardFile = false; viewModel.closeEditor() }) { Text("Отменить изменения") } },
         dismissButton = { TextButton(onClick = { discardFile = false }) { Text("Продолжить редактирование") } })
     ModalBottomSheet(onDismissRequest = ::close) {

@@ -46,6 +46,8 @@ object Routes {
     const val SETUP_URL = "setup_url"
     const val LOGIN = "login"
     const val MAIN = "main"
+    const val AUTHENTICATOR = "authenticator"
+    const val ROOT_AUTHENTICATOR = "offline_authenticator"
     const val SERVERS = "servers"
     const val DASHBOARD = "dashboard"
     const val TASKS = "tasks"
@@ -78,25 +80,38 @@ private data class Tab(val route: String, val label: String, val icon: ImageVect
 private val tabs = listOf(Tab(Routes.DASHBOARD,"Обзор",Icons.Default.Dashboard),Tab(Routes.SERVERS,"Серверы",Icons.Default.Dns),Tab(Routes.SERVICES,"Сервисы",Icons.Default.Widgets),Tab(Routes.EVENTS,"История",Icons.Default.History),Tab(Routes.SETTINGS,"Ещё",Icons.Default.Apps))
 
 @Composable
-fun Bot4VpsNavHost(terminalSessions: TerminalSessionsViewModel, eventId: String? = null, onEventConsumed: () -> Unit = {}) {
+fun Bot4VpsNavHost(terminalSessions: TerminalSessionsViewModel, eventId: String? = null, onEventConsumed: () -> Unit = {}, revokedOrigin: String? = null, connectionChange: com.bot4vps.mobile.data.model.ConnectionNotice? = null) {
     val auth: AuthViewModel = hiltViewModel()
     val destination by auth.startDestination.collectAsState()
     val first = destination
-    if (first == null) { Box(Modifier.fillMaxSize(),contentAlignment=Alignment.Center) { CircularProgressIndicator() }; return }
+    val activeAddress by auth.baseUrl.collectAsState(initial = null)
+    var emergencyAuthenticator by remember { mutableStateOf(false) }
+    if (emergencyAuthenticator) { com.bot4vps.mobile.ui.authenticator.AuthenticatorScreen(onBack = { emergencyAuthenticator = false }, offline = true, onConnect = { emergencyAuthenticator = false }); return }
+    if (first == null) { Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+        CircularProgressIndicator(); TextButton(onClick = { emergencyAuthenticator = true }) { Text("Authenticator · доступен без панели") }
+    }; return }
     val root = rememberNavController()
-    fun login() { terminalSessions.closeAll(); root.navigate(Routes.LOGIN) { popUpTo(root.graph.id) { inclusive = true }; launchSingleTop = true } }
+    LaunchedEffect(revokedOrigin, activeAddress) { if (revokedOrigin != null && com.bot4vps.mobile.data.model.panelProfileOrigin(activeAddress) == revokedOrigin) { terminalSessions.closeAll(); root.navigate(Routes.ROOT_AUTHENTICATOR) { popUpTo(root.graph.id) { inclusive = true }; launchSingleTop = true } } }
+    LaunchedEffect(connectionChange?.id) {
+        connectionChange?.takeIf { it.switched }?.let { change ->
+            terminalSessions.closeAll()
+            root.navigate(if (change.nextOrigin != null) Routes.LOGIN else Routes.ROOT_AUTHENTICATOR) { popUpTo(root.graph.id) { inclusive = true }; launchSingleTop = true }
+        }
+    }
+    fun login() { terminalSessions.closeAll(); root.navigate(if (!activeAddress.isNullOrBlank()) Routes.LOGIN else Routes.ROOT_AUTHENTICATOR) { popUpTo(root.graph.id) { inclusive = true }; launchSingleTop = true } }
     var editingAddress by remember { mutableStateOf<Boolean?>(null) }
     fun changeUrl() { editingAddress = false }
     editingAddress?.let { newPanel -> PanelAddressDialog(newPanel = newPanel,
-        onDismiss = { editingAddress = null }, onSaved = { editingAddress = null; login() }) }
+        onDismiss = { editingAddress = null }, onSaved = { editingAddress = null; terminalSessions.closeAll(); root.navigate(Routes.LOGIN) { popUpTo(root.graph.id) { inclusive = true }; launchSingleTop = true } }) }
     NavHost(root,startDestination=first,
         enterTransition = { fadeIn(tween(150)) }, exitTransition = { fadeOut(tween(150)) },
         popEnterTransition = { fadeIn(tween(150)) }, popExitTransition = { fadeOut(tween(150)) }) {
-        composable(Routes.SETUP_URL) { SetupUrlScreen(onUrlSaved = { root.navigate(Routes.LOGIN) { popUpTo(Routes.SETUP_URL) { inclusive=true } } }) }
+        composable(Routes.SETUP_URL) { SetupUrlScreen(onAuthenticator = { root.navigate(Routes.ROOT_AUTHENTICATOR) }, onUrlSaved = { root.navigate(Routes.LOGIN) { popUpTo(Routes.SETUP_URL) { inclusive=true } } }) }
         composable(Routes.LOGIN) {
             LoginScreen(onLoggedIn = { root.navigate(Routes.MAIN) { popUpTo(Routes.LOGIN) { inclusive=true } } },
-                onChangeUrl=::changeUrl, onOtherPanel={ editingAddress = true })
+                onAuthenticator = { root.navigate(Routes.ROOT_AUTHENTICATOR) }, onChangeUrl=::changeUrl, onOtherPanel={ editingAddress = true })
         }
+        composable(Routes.ROOT_AUTHENTICATOR) { com.bot4vps.mobile.ui.authenticator.AuthenticatorScreen(onBack = { root.popBackStack() }, offline = true, onConnect = ::changeUrl) }
         composable(Routes.ROOT_OPERATION,arguments=listOf(navArgument("operationId") { type=NavType.StringType })) {
             NativeActionScreen(onBack={ root.popBackStack() },onLogin=::login,onOperation={ root.navigate("root-operation/${Uri.encode(it)}") })
         }
@@ -147,7 +162,8 @@ private fun MainShell(terminalSessions: TerminalSessionsViewModel,onLogout: () -
             composable(Routes.HISTORY_DETAIL, arguments=listOf(navArgument("serverId") { type=NavType.StringType; nullable=true; defaultValue=null }, navArgument("taskId") { type=NavType.StringType; nullable=true; defaultValue=null })) { entry ->
                 TasksScreen(onBack={ nav.popBackStack() }, onEvents={ nav.navigate(Routes.section("events")) })
             }
-            composable(Routes.SERVICES) { ServicesScreen(onServer={ kind, id -> nav.navigate(Routes.serviceDetail(kind,id)) }, onFiles={ nav.navigate(Routes.section("files")) }, onScriptsFiles={ nav.navigate(Routes.section("files",view="scripts")) }, onOperation={ nav.navigate(Routes.operation(it)) },onHistory={ nav.navigate(Routes.history(taskId=it)) },onQueues={ nav.navigate(Routes.section("queues")) },onBackups={ nav.navigate(Routes.section("backups")) },onChecks={ nav.navigate(Routes.SERVER_CHECKS) }) }
+            composable(Routes.SERVICES) { ServicesScreen(onServer={ kind, id -> nav.navigate(Routes.serviceDetail(kind,id)) }, onFiles={ nav.navigate(Routes.section("files")) }, onScriptsFiles={ nav.navigate(Routes.section("files",view="scripts")) }, onOperation={ nav.navigate(Routes.operation(it)) },onHistory={ nav.navigate(Routes.history(taskId=it)) },onQueues={ nav.navigate(Routes.section("queues")) },onBackups={ nav.navigate(Routes.section("backups")) },onChecks={ nav.navigate(Routes.SERVER_CHECKS) },onAuthenticator={ nav.navigate(Routes.AUTHENTICATOR) }) }
+            composable(Routes.AUTHENTICATOR) { com.bot4vps.mobile.ui.authenticator.AuthenticatorScreen(onBack={ nav.popBackStack() }) }
             composable(Routes.SERVER_CHECKS) { ServerChecksScreen(onBack={ nav.popBackStack() }, onServer={ nav.navigate(Routes.serverDetail(it)) }) }
             composable(Routes.SERVICE_DETAIL, arguments=listOf(navArgument("serviceId") { type=NavType.StringType }, navArgument("serverId") { type=NavType.StringType })) { entry ->
                 val id=entry.arguments?.getString("serverId") ?: return@composable

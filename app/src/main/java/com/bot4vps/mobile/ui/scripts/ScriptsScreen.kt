@@ -108,7 +108,7 @@ private fun ScriptCard(script: ScriptInfo, onRun: () -> Unit, onEdit:()->Unit, o
 @Composable
 private fun RunDialog(state: ScriptsUiState, vm: ScriptsViewModel) {
     val script = state.activeScript ?: return
-    AlertDialog(
+    PanelAlertDialog(
         onDismissRequest = vm::closeRun,
         title = { Text(script.name) },
         text = {

@@ -403,4 +403,64 @@ class MobileAccessClientTest {
             assertThrows(IllegalArgumentException::class.java) { mobile.signMasterKeyEnrollment(server.url("/"), challenge, "another-key") }
         } finally { server.shutdown() }
     }
+    @Test fun explicitRevocationMarkerIsDifferentFromPermissionFailure(): Unit = runBlocking {
+        val (server, transport) = tls()
+        try {
+            val keys = Keys(); server.dispatcher = Api(keys)
+            var notified: String? = null
+            val mobile = MobileAccessClient(keys, Json, transport, onRevoked = { notified = it })
+            mobile.pair(server.url("/").toString(), invitation(server))
+            server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
+                override fun dispatch(request: RecordedRequest) = MockResponse().setResponseCode(403)
+                    .setHeader("X-Bot4VPS-Mobile-Error", "pairing").setBody("{\"detail\":\"Неверная подпись\"}")
+            }
+            assertTrue(runCatching { mobile.sessionAsync(server.url("/api/me"), force = true) }.exceptionOrNull() is MobilePairingRequired)
+            assertNull(notified)
+            server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
+                override fun dispatch(request: RecordedRequest) = MockResponse().setResponseCode(403)
+                    .setHeader("X-Bot4VPS-Mobile-Error", "revoked").setBody("{\"detail\":\"Доступ отозван\"}")
+            }
+            val error = runCatching { mobile.sessionAsync(server.url("/api/me"), force = true) }.exceptionOrNull()
+            assertTrue(error is MobileAccessRevoked)
+            assertEquals(mobileOrigin(server.url("/")), notified)
+            assertTrue(errorText(error!!).contains("отозван"))
+        } finally { server.shutdown() }
+    }
+
+    @Test fun lateRevocationCleanupPreservesANewBinding(): Unit = runBlocking {
+        val (server, transport) = tls()
+        try {
+            val keys = Keys(); server.dispatcher = Api(keys)
+            val mobile = MobileAccessClient(keys, Json, transport)
+            mobile.pair(server.url("/").toString(), invitation(server))
+            val origin = mobileOrigin(server.url("/"))
+            val old = keys.devices.getValue(origin)
+            mobile.noteRevoked(server.url("/"))
+            assertEquals(old.id, mobile.revokedDeviceId(origin))
+            keys.remember(origin, old.copy(id = "new-device"))
+            var removedOperations = false
+            mobile.forgetIfDevice(server.url("/"), old.id) { removedOperations = true }
+            assertFalse(removedOperations)
+            assertEquals("new-device", keys.device(origin)?.id)
+            mobile.forgetIfDevice(server.url("/"), "new-device") { removedOperations = true }
+            assertTrue(removedOperations)
+            assertFalse(mobile.isPaired(server.url("/")))
+        } finally { server.shutdown() }
+    }
+
+    @Test fun loginDecisionUsesRegisteredDeviceKeyAndChecksExpectedServerPin(): Unit = runBlocking {
+        val (server, transport) = tls()
+        try {
+            val keys = Keys(); server.dispatcher = Api(keys)
+            val mobile = MobileAccessClient(keys, Json, transport)
+            mobile.pair(server.url("/").toString(), invitation(server))
+            val device = keys.devices.values.single()
+            val proof = mobile.signAuthDecision(server.url("/"), "login-id", "nonce", "approve", device.serverPin)
+            val message = com.bot4vps.mobile.data.model.authDecisionMessage("login-id", "nonce", device.id, "approve")
+            assertTrue(Signature.getInstance("SHA256withECDSA").run { initVerify(keys.key.public); update(message); verify(Base64.getDecoder().decode(proof)) })
+            assertFalse(Signature.getInstance("SHA256withECDSA").run { initVerify(keys.operationKey.public); update(message); verify(Base64.getDecoder().decode(proof)) })
+            assertThrows(IllegalArgumentException::class.java) { mobile.signAuthDecision(server.url("/"), "login-id", "nonce", "approve", "sha256/wrong") }
+        } finally { server.shutdown() }
+    }
+
 }

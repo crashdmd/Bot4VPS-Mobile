@@ -15,8 +15,12 @@ fun QrScanButton(enabled: Boolean = true, onCode: (String) -> Unit, onError: (St
     val scanner = rememberLauncherForActivityResult(ScanContract()) { result ->
         val value = result.contents
         if (value != null) {
-            val valid = runCatching { readMobileInvitation(value) != null }.getOrDefault(false)
-            if (valid) onCode(value) else onError("Это не QR-код привязки Bot4VPS. Создайте привязку в Web-панели.")
+            try {
+                if (readMobileInvitation(value) != null) onCode(value)
+                else onError("Это не QR-код привязки Bot4VPS. Создайте привязку в Web-панели.")
+            } catch (change: com.bot4vps.mobile.data.api.MobileAddressChangeRequired) {
+                onError(change.message.orEmpty())
+            } catch (e: Exception) { onError(com.bot4vps.mobile.data.api.errorText(e)) }
         }
     }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->

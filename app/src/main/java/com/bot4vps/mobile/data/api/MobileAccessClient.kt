@@ -20,13 +20,15 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.concurrent.TimeUnit
 
-data class PairedMobileDevice(val id: String, val alias: String, val serverPin: String? = null)
+data class PairedMobileDevice(val id: String, val alias: String, val serverPin: String? = null, val operationAlias: String? = null)
 interface MobileDeviceKeys {
+    fun origins(): List<String> = emptyList()
     fun device(origin: String): PairedMobileDevice?
     fun publicKey(origin: String): Pair<String, ByteArray>
     fun operationPublicKey(origin: String): Pair<String, ByteArray>
     fun remember(origin: String, device: PairedMobileDevice)
     fun forget(origin: String)
+    fun migrate(oldOrigin: String, newOrigin: String, expected: PairedMobileDevice) { error("Перенос ключей не поддерживается") }
     fun sign(alias: String, message: ByteArray): ByteArray
 }
 
@@ -38,15 +40,103 @@ fun mobileChallengeMessage(device: String, challenge: String, nonce: String): By
 /** Only a paired origin receives a device token. Never follows redirects or uses HTTP. */
 class MobileAccessClient(private val keys: MobileDeviceKeys, private val json: Json,
     private val transport: OkHttpClient = OkHttpClient.Builder().connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(10, TimeUnit.SECONDS).writeTimeout(10, TimeUnit.SECONDS).followRedirects(false).followSslRedirects(false).build()) {
+        .readTimeout(10, TimeUnit.SECONDS).writeTimeout(10, TimeUnit.SECONDS).followRedirects(false).followSslRedirects(false).build(),
+    private val onRevoked: (String) -> Unit = {}) {
     private data class Session(val token: String, val expires: Long)
     private val sessions = mutableMapOf<String, Session>()
+    private val revokedDevices = mutableMapOf<String, String>()
     private val pinnedClients = mutableMapOf<Pair<OkHttpClient, String>, OkHttpClient>()
     private val originLocks = mutableMapOf<String, Mutex>()
+    private fun migrationTransport(url: HttpUrl, pin: String) = pinnedMobileClient(transport.newBuilder().cookieJar(CookieJar.NO_COOKIES).build(), url, pin)
     private fun lockFor(origin: String) = synchronized(this) { originLocks.getOrPut(origin) { Mutex() } }
     private fun origin(url: HttpUrl) = mobileOrigin(url)
     private fun secure(url: HttpUrl) { if (!url.isHttps) throw MobilePairingRequired("Для привязки телефона требуется HTTPS") }
     fun isPaired(url: HttpUrl): Boolean = url.isHttps && keys.device(origin(url))?.serverPin != null
+
+    fun pairedDevices(): List<Pair<String, PairedMobileDevice>> = keys.origins().mapNotNull { origin -> keys.device(origin)?.let { origin to it } }
+
+    @Synchronized
+    fun validateChange(change: com.bot4vps.mobile.data.model.MobileConnectionChange): PairedMobileDevice {
+        val device = keys.device(change.sourceOrigin) ?: keys.device(change.origin)?.takeIf { it.id == change.deviceId }
+            ?: throw MobilePairingRequired("Прежняя связь с этим сервисом не найдена")
+        require(device.serverPin == change.serverPin) { "Отпечаток сервиса изменился. Прежняя связь сохранена." }
+        require(change.deviceId.isEmpty() || change.deviceId == device.id) { "Связь устройства изменилась" }
+        val conflict = keys.device(change.origin)
+        require(change.origin == change.sourceOrigin || conflict == null || conflict.id == device.id && conflict.alias == device.alias) { "Новый адрес уже используется другим подключением" }
+        return device
+    }
+
+    /** Use the selected profile's device identity, never a QR address or pin alone. */
+    @Synchronized
+    fun sourceForChange(profileOrigin: String, expectedDeviceId: String, expectedPin: String? = null): Pair<String, PairedMobileDevice> {
+        require(expectedDeviceId.isNotBlank()) { "У выбранного сервиса нет сохранённой привязки телефона" }
+        val direct = keys.device(profileOrigin)
+        if (direct != null) {
+            require(direct.id == expectedDeviceId && direct.serverPin != null && (expectedPin == null || direct.serverPin == expectedPin)) { "QR относится к другой связи или отпечаток сервиса изменился" }
+            return profileOrigin to direct
+        }
+        val candidates = pairedDevices().filter { (_, device) -> device.id == expectedDeviceId && device.serverPin != null && (expectedPin == null || device.serverPin == expectedPin) }
+        require(candidates.size <= 1) { "Сохранены несколько адресов этой привязки. Сначала завершите прежнюю смену адреса." }
+        return candidates.singleOrNull()
+            ?: throw MobilePairingRequired("Ключ привязки выбранного сервиса отсутствует на телефоне. Новый адрес не подтверждён, прежние настройки панели сохранены.")
+    }
+
+    suspend fun discoverChange(oldOrigin: String, newUrl: String): com.bot4vps.mobile.data.model.MobileConnectionChange = withContext(Dispatchers.IO) {
+        val destination = com.bot4vps.mobile.data.model.manualConnectionUrl(newUrl)
+        val device = keys.device(oldOrigin) ?: throw MobilePairingRequired("Прежняя связь не найдена")
+        val pin = device.serverPin ?: error("Нет отпечатка сервиса")
+        val url = PanelUrl.endpoint(destination, "/api/mobile/connection-change/preview")
+        val signature = Base64.getEncoder().encodeToString(keys.sign(device.alias,
+            "bot4vps-mobile-discover-v1\n${device.id}\n$destination".toByteArray(Charsets.US_ASCII)))
+        val result = post(url, buildJsonObject { put("device_id", device.id); put("url", destination); put("signature", signature) }, migrationTransport(url, pin))
+        require(result["ok"]?.jsonPrimitive?.booleanOrNull == true && result["device_id"]?.jsonPrimitive?.content == device.id) { "Сервис не подтвердил прежнюю связь" }
+        val change = if (result["state"]?.jsonPrimitive?.content == "pending") com.bot4vps.mobile.data.model.connectionChange(result.getValue("payload").jsonObject)
+            else {
+                require(result["state"]?.jsonPrimitive?.content == "approved") { "Смена адреса не подтверждена" }
+                com.bot4vps.mobile.data.model.MobileConnectionChange(result.getValue("public_url").jsonPrimitive.content, oldOrigin, "", "", pin, device.id, approved = true)
+            }
+        require(change.origin == destination && change.serverPin == pin) { "Сервис вернул другой адрес подключения или отпечаток" }
+        val bound = change.copy(deviceId = device.id, localOldUrl = oldOrigin)
+        validateChange(bound)
+        bound
+    }
+
+    suspend fun confirmChange(change: com.bot4vps.mobile.data.model.MobileConnectionChange) = withContext(Dispatchers.IO) {
+        val device = validateChange(change)
+        if (!change.approved) {
+            val url = PanelUrl.endpoint(change.url, "/api/mobile/connection-change/confirm")
+            val signature = Base64.getEncoder().encodeToString(keys.sign(device.alias, com.bot4vps.mobile.data.model.connectionChangeMessage(change, device.id)))
+            val result = post(url, buildJsonObject { put("id", change.id); put("device_id", device.id); put("signature", signature) }, migrationTransport(url, change.serverPin))
+            require(result["ok"]?.jsonPrimitive?.booleanOrNull == true && result["state"]?.jsonPrimitive?.content == "approved" &&
+                result["device_id"]?.jsonPrimitive?.content == device.id && result["public_url"]?.jsonPrimitive?.content == change.url) { "Сервис не подтвердил сохранение нового адреса" }
+        }
+    }
+
+    suspend fun migrateChange(change: com.bot4vps.mobile.data.model.MobileConnectionChange) = withContext(Dispatchers.IO) {
+        val device = validateChange(change)
+        keys.migrate(change.sourceOrigin, change.origin, device)
+        synchronized(this@MobileAccessClient) { sessions.remove(change.sourceOrigin); sessions.remove(change.profileOrigin); sessions.remove(change.origin); pinnedClients.clear() }
+    }
+
+    fun noteRevoked(url: HttpUrl) {
+        val address = origin(url)
+        synchronized(this) { sessions.remove(address); keys.device(address)?.let { revokedDevices[address] = it.id } }
+        onRevoked(address)
+    }
+    @Synchronized fun revokedDeviceId(address: String): String? = revokedDevices[address]
+    fun reportRevoked(url: HttpUrl): Nothing { noteRevoked(url); throw MobileAccessRevoked(origin(url)) }
+
+    @Synchronized
+    fun signAuthDecision(url: HttpUrl, id: String, nonce: String, action: String, expectedPin: String? = null): String {
+        secure(url)
+        val device = keys.device(origin(url))?.takeIf { it.serverPin != null }
+            ?: throw MobilePairingRequired("Сначала привяжите телефон к этой панели")
+        require(expectedPin == null || expectedPin == device.serverPin) { "QR относится к другой панели или её отпечаток изменился" }
+        val message = com.bot4vps.mobile.data.model.authDecisionMessage(id, nonce, device.id, action)
+        return Base64.getEncoder().encodeToString(keys.sign(device.alias, message))
+    }
+
+    fun matchesLoginQr(qr: com.bot4vps.mobile.data.model.MobileLoginQr): Boolean = keys.device(qr.origin)?.serverPin == qr.serverPin
 
     @Synchronized
     fun clientFor(base: OkHttpClient, url: HttpUrl): OkHttpClient {
@@ -70,7 +160,7 @@ class MobileAccessClient(private val keys: MobileDeviceKeys, private val json: J
             .also { pinnedClients[cacheKey] = it }
     }
 
-    suspend fun pair(baseUrl: String, code: String): Unit = withContext(Dispatchers.IO) {
+    suspend fun pair(baseUrl: String, code: String, deviceName: String? = null): Unit = withContext(Dispatchers.IO) {
         val invitation = readMobileInvitation(code.trim())
         val url = PanelUrl.endpoint(invitation?.url ?: baseUrl, "/api/mobile/pair")
         secure(url)
@@ -82,12 +172,13 @@ class MobileAccessClient(private val keys: MobileDeviceKeys, private val json: J
             val result = post(url, buildJsonObject {
                 put("code", invitation?.code ?: code.trim()); put("public_key", Base64.getEncoder().encodeToString(publicKey))
                 put("masterkey_device_public_key", Base64.getEncoder().encodeToString(operationPublicKey))
+                deviceName?.let { put("name", it) }
             }, pinnedMobileClient(transport, url, pin))
             val id = result["device_id"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
                 ?: throw IOException("Панель не подтвердила привязку телефона")
             currentCoroutineContext().ensureActive()
             keys.remember(origin(url), PairedMobileDevice(id, alias, pin))
-            synchronized(this@MobileAccessClient) { sessions.remove(origin(url)) }
+            synchronized(this@MobileAccessClient) { sessions.remove(origin(url)); revokedDevices.remove(origin(url)) }
             Unit
         }
     }
@@ -138,6 +229,7 @@ class MobileAccessClient(private val keys: MobileDeviceKeys, private val json: J
             synchronized(this@MobileAccessClient) { sessions[origin] = Session(token, System.currentTimeMillis() + seconds * 1000) }
             token
         } catch (e: ApiError) {
+            if (e.code == "revoked") reportRevoked(url)
             if (e.status in setOf(401, 403, 428)) throw MobilePairingRequired("Доступ телефона отозван или ключ недоступен. Привяжите телефон заново.")
             throw e
         } catch (e: java.security.GeneralSecurityException) {
@@ -146,10 +238,13 @@ class MobileAccessClient(private val keys: MobileDeviceKeys, private val json: J
         }
     }
 
-    fun forget(url: HttpUrl, removeOperationKeys: (String) -> Unit = {}) {
+    fun forget(url: HttpUrl, removeOperationKeys: (String) -> Unit = {}) = forgetIfDevice(url, null, removeOperationKeys)
+
+    fun forgetIfDevice(url: HttpUrl, expectedDeviceId: String?, removeOperationKeys: (String) -> Unit = {}) {
         val origin = origin(url)
         runBlocking { lockFor(origin).withLock {
             synchronized(this@MobileAccessClient) {
+                if (expectedDeviceId != null && keys.device(origin)?.id != expectedDeviceId) return@withLock
                 removeOperationKeys(origin)
                 sessions.remove(origin)
                 pinnedClients.clear()
@@ -208,7 +303,7 @@ class MobileAccessClient(private val keys: MobileDeviceKeys, private val json: J
         try { call.awaitResponse().use { response ->
             val raw = response.body?.string().orEmpty()
             val result = runCatching { json.parseToJsonElement(raw) as? JsonObject }.getOrNull()
-            if (!response.isSuccessful) throw ApiError(response.code, result?.get("detail")?.jsonPrimitive?.contentOrNull ?: "Панель не подтвердила подключение")
+            if (!response.isSuccessful) throw ApiError(response.code, result?.get("detail")?.jsonPrimitive?.contentOrNull ?: "Панель не подтвердила подключение", response.header("X-Bot4VPS-Mobile-Error"))
             result ?: throw IOException("Неверное подтверждение панели")
         } } catch (e: IOException) {
             currentCoroutineContext().ensureActive()
@@ -223,6 +318,7 @@ class MobileAccessInterceptor(private val mobile: MobileAccessClient) : Intercep
         val token = mobile.session(original.url, force = original.header("Upgrade")?.equals("websocket", ignoreCase = true) == true, caller = chain.call())
         val request = original.newBuilder().header("X-Bot4VPS-Mobile-Session", token).build()
         val response = chain.proceed(request)
+        if (response.header("X-Bot4VPS-Mobile-Error") == "revoked") { response.close(); mobile.reportRevoked(original.url) }
         if (response.code == 401 && response.header("X-Bot4VPS-Mobile-Error") == "session") {
             response.close()
             val fresh = mobile.session(original.url, force = true, caller = chain.call())

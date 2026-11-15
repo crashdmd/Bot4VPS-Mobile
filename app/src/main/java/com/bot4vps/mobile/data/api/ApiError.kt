@@ -1,12 +1,13 @@
 package com.bot4vps.mobile.data.api
 
+import com.bot4vps.mobile.data.model.phoneRoleMessage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.*
 import retrofit2.HttpException
 import java.io.IOException
 
-class ApiError(val status: Int, message: String) : IOException(message)
+class ApiError(val status: Int, message: String, val code: String? = null) : IOException(message)
 
 const val PANEL_CONNECT_TIMEOUT_MS = 10_000L
 private const val NETWORK_HINT = "Проверьте интернет, адрес и порт подключения. " +
@@ -37,12 +38,12 @@ fun errorText(error: Throwable): String {
                 else null
             }
         }.getOrNull()
-        return detail ?: when (error.code()) {
+        return detail?.let(::phoneRoleMessage) ?: when (error.code()) {
             401 -> "Сессия истекла. Войдите заново."
             403 -> "Недостаточно прав для этой операции"
             429 -> "Слишком много попыток. Подождите и повторите."
             else -> "Панель ответила ошибкой ${error.code()}"
         }
     }
-    return error.message ?: "Не удалось подключиться к панели"
+    return error.message?.let(::phoneRoleMessage) ?: "Не удалось подключиться к панели"
 }

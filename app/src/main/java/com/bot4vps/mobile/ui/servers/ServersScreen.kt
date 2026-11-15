@@ -35,8 +35,9 @@ fun ServersScreen(onOpenServer: (String) -> Unit, onCreate: () -> Unit = {}, onG
     val listState = rememberLazyListState()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     LaunchedEffect(lifecycle, viewModel) { lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) { viewModel.observe() } }
-    var revealAll by rememberSaveable { mutableStateOf(false) }
+    val revealAll = state.revealAddresses
     PanelScaffold(topBar = { PanelTopBar(title = { Text("Серверы", fontWeight = FontWeight.SemiBold) }, actions = {
+        IconButton(onClick = viewModel::revealAddresses) { Icon(if (revealAll) Icons.Default.VisibilityOff else Icons.Default.Visibility, if (revealAll) "Скрыть IP и домены" else "Показать IP и домены") }
         IconButton(onClick = onCreate) { Icon(Icons.Default.Add, "Добавить сервер") }
         IconButton(onClick = onGroups) { Icon(Icons.Default.Settings, "Настройки групп") }
     }) }) { padding ->
@@ -48,13 +49,17 @@ fun ServersScreen(onOpenServer: (String) -> Unit, onCreate: () -> Unit = {}, onG
                 item { PanelTab(state.selectedGroup == null, { viewModel.selectGroup(null) }, label = { Text("Все · ${state.servers.size}") }) }
                 items(state.groups, key = { it }) { group -> PanelTab(state.selectedGroup == group, { viewModel.selectGroup(group) }, label = { Text("$group · ${state.servers.count { it.group == group }}") }) }
             }
-            LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                items(ServerListSort.entries) { sort ->
-                    PanelTab(state.sort == sort, { viewModel.sort(sort) }, label = {
-                        Text(sort.title + if (state.sort == sort) if (state.descending) " ↓" else " ↑" else "")
-                    })
+            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                ServerListSort.entries.forEach { sort ->
+                    TextButton(onClick = { viewModel.sort(sort) }, modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(horizontal = 0.dp),
+                        colors = ButtonDefaults.textButtonColors(
+                            containerColor = if (state.sort == sort) MaterialTheme.colorScheme.primaryContainer else androidx.compose.ui.graphics.Color.Transparent,
+                            contentColor = if (state.sort == sort) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant)) {
+                        Text(sort.title + if (state.sort == sort) if (state.descending) "↓" else "↑" else "",
+                            style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false)
+                    }
                 }
-                if (state.sort == ServerListSort.NAME) item { IconButton(onClick = { revealAll = !revealAll }) { Icon(if (revealAll) Icons.Default.VisibilityOff else Icons.Default.Visibility, if (revealAll) "Скрыть все IP" else "Показать все IP") } }
             }
             LazyColumn(Modifier.weight(1f), state = listState, contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 16.dp), verticalArrangement = refreshArrangement(8.dp)) {
                 state.error?.let { item(key = "error") { ErrorCard(it, viewModel::refresh) } }
@@ -69,7 +74,7 @@ fun ServersScreen(onOpenServer: (String) -> Unit, onCreate: () -> Unit = {}, onG
 
 @Composable
 fun ServerListCard(server: ServerSummary, revealAll: Boolean = false, sort: ServerListSort = ServerListSort.NAME, onClick: () -> Unit) {
-    var revealed by rememberSaveable(server.id) { mutableStateOf(false) }
+    var revealed by rememberSaveable(server.id, revealAll) { mutableStateOf(false) }
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
     val address = server.hostIp?.takeIf(String::isNotBlank) ?: server.host?.takeIf(String::isNotBlank)

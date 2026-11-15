@@ -39,11 +39,13 @@ fun PanelScaffold(
     topBar: @Composable () -> Unit = {},
     bottomBar: @Composable () -> Unit = {},
     snackbarHost: @Composable () -> Unit = {},
+    floatingActionButton: @Composable () -> Unit = {},
     content: @Composable (PaddingValues) -> Unit
 ) {
     PanelBackground {
         Scaffold(modifier = modifier, containerColor = Color.Transparent,
-            topBar = topBar, bottomBar = bottomBar, snackbarHost = snackbarHost, content = content)
+            topBar = topBar, bottomBar = bottomBar, snackbarHost = snackbarHost,
+            floatingActionButton = floatingActionButton, content = content)
     }
 }
 
@@ -55,7 +57,7 @@ fun PanelTopBar(
     navigationIcon: @Composable () -> Unit = {},
     actions: @Composable RowScope.() -> Unit = {}
 ) {
-    TopAppBar(title = { ProvideTextStyle(MaterialTheme.typography.headlineMedium) { title() } }, modifier = modifier, navigationIcon = navigationIcon, actions = actions,
+    TopAppBar(title = { ProvideTextStyle(MaterialTheme.typography.headlineMedium) { title() } }, modifier = modifier, navigationIcon = navigationIcon, actions = { actions(); SecurityAlertButton() },
         expandedHeight = 56.dp,
         colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent,
             titleContentColor = MaterialTheme.colorScheme.onBackground))

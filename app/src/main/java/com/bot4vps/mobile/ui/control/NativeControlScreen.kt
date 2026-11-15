@@ -47,7 +47,7 @@ fun NativeSectionScreen(section: String, onBack: (() -> Unit)? = null, onOperati
     var confirmClear by remember { mutableStateOf(false) }
     val snack = remember { SnackbarHostState() }
     LaunchedEffect(state.notice) { state.notice?.let { snack.showSnackbar(it); viewModel.consumeNotice() } }
-    if (confirmClear) AlertDialog(onDismissRequest = { confirmClear = false },
+    if (confirmClear) PanelAlertDialog(onDismissRequest = { confirmClear = false },
         title = { Text("Очистить журнал событий?") },
         text = { Text("Все сохранённые события и уведомления будут удалены без возможности восстановления. История задач сохраняется.") },
         confirmButton = { TextButton(onClick = { confirmClear = false; viewModel.clearEvents() }, enabled = !state.busy && !state.loading) { Text("Очистить") } },
@@ -132,7 +132,7 @@ fun NativeActionScreen(onBack: () -> Unit, onLogin: () -> Unit, onOperation: (St
     val saveFile = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri -> uri?.let { viewModel.execute(it) } }
     BackHandler { onBack() }
     selectedRecord?.let { selected -> NativeRecordSheet(selected, viewModel, { selectedRecord = null }, onOperation) }
-    if (confirm && op != null) AlertDialog(
+    if (confirm && op != null) PanelAlertDialog(
         onDismissRequest = { confirm = false }, title = { Text("Подтвердить действие") },
         text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(op.title)
@@ -143,7 +143,7 @@ fun NativeActionScreen(onBack: () -> Unit, onLogin: () -> Unit, onOperation: (St
         confirmButton = { TextButton(onClick = { confirm = false; viewModel.execute() }) { Text("Подтвердить") } },
         dismissButton = { TextButton(onClick = { confirm = false }) { Text("Отмена") } }
     )
-    if (restoreConfirm) AlertDialog(
+    if (restoreConfirm) PanelAlertDialog(
         onDismissRequest = { restoreConfirm = false }, title = { Text("Применить план восстановления?") },
         text = { Text("Файлы будут восстановлены по подготовленному плану. Проверьте состав и режим восстановления в результате ниже.") },
         confirmButton = { TextButton(onClick = { restoreConfirm = false; viewModel.applyRestore() }) { Text("Восстановить") } },
@@ -242,7 +242,7 @@ fun NativeRecordSheet(selected: Pair<JsonObject, String>, viewModel: NativeContr
     val state by viewModel.state.collectAsState()
     val (record, collection) = selected
     if (collection == "events") {
-        AlertDialog(onDismissRequest = onDismiss, title = { Text("Событие") },
+        PanelAlertDialog(onDismissRequest = onDismiss, title = { Text("Событие") },
             text = { Column(Modifier.fillMaxWidth().heightIn(max = 440.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(record.text("title") ?: "Событие", style = MaterialTheme.typography.titleMedium)
                 Text(displayTime(record.text("timestamp")), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

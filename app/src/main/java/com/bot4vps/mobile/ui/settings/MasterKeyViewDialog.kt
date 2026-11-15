@@ -1,5 +1,7 @@
 package com.bot4vps.mobile.ui.settings
 
+import com.bot4vps.mobile.ui.components.PanelAlertDialog
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
@@ -164,7 +166,7 @@ fun MasterKeyViewDialog(client: NativePanelClient, protection: AppLockManager, o
         }
         return
     }
-    AlertDialog(onDismissRequest = ::dismiss,
+    PanelAlertDialog(onDismissRequest = ::dismiss,
         properties = DialogProperties(securePolicy = SecureFlagPolicy.SecureOn),
         title = { Text(when (state.step) { MasterKeyStep.BLOCKED -> "Просмотр пока недоступен"; MasterKeyStep.LOADING, MasterKeyStep.LOCAL, MasterKeyStep.SETUP_PIN, MasterKeyStep.PASSWORD -> "Просмотр мастер-ключа"; MasterKeyStep.CODE -> "Подтверждение владельца"; MasterKeyStep.READY -> "Личность подтверждена"; MasterKeyStep.KEY -> "Мастер-ключ" }) },
         text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {

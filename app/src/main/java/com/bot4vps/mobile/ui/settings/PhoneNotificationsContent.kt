@@ -34,14 +34,15 @@ fun PhoneNotificationsContent(modifier: Modifier, prefs: PreferencesManager) {
     }
     LazyColumn(modifier, contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { SettingsCard("Уведомления телефона", "Настройки действуют только на этом устройстве") {
-            SettingRow("Получать уведомления", "Новые события панели в шторке телефона, в том числе в фоне") {
+            SettingRow("Получать уведомления о событиях", "Состояние серверов, задачи и другие события панели") {
                 Switch(enabled, { next ->
-                    if (!next) scope.launch { prefs.setPhoneNotifications(false); PhoneNotificationService.stop(context) }
+                    if (!next) scope.launch { prefs.setPhoneNotifications(false) }
                     else if (NotificationManagerCompat.from(context).areNotificationsEnabled()) enable()
                     else if (Build.VERSION.SDK_INT >= 33) permission.launch(Manifest.permission.POST_NOTIFICATIONS)
                     else denied = true
                 })
             }
+            Text("Запросы входа и отвязки приходят независимо от этого переключателя. Для уведомлений в фоне разрешите их в настройках Android.", style = MaterialTheme.typography.bodySmall)
             Text("Получение идёт через постоянное соединение с панелью. В шторке будет плашка службы. Интервал и выключатель Telegram на уведомления телефона не влияют.", style = MaterialTheme.typography.bodySmall)
             if (denied || enabled && !NotificationManagerCompat.from(context).areNotificationsEnabled()) {
                 Text("Разрешите уведомления в настройках Android", color = MaterialTheme.colorScheme.error)

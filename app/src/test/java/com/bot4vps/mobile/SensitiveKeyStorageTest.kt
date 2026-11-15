@@ -20,6 +20,95 @@ class SensitiveKeyStorageTest {
             if (value == null) records.remove(slot) else records[slot] = value
         }
 
+    @Test fun returningToThePreviousPortPreservesTheSameKeyAndCanResumeAnApprovedJournal(): Unit = kotlinx.coroutines.runBlocking {
+        val records = mutableMapOf<String, String>()
+        val storage = storage(records)
+        val key = storage.create(origin, "seed", seed)
+        val next = "https://panel.test:885"
+        storage.migrate(origin, next); storage.finishMigration(origin, next)
+        val returning = MobileConnectionChange(origin, next, "return", "nonce", "pin", "phone", approved = true)
+        var journal: MobileConnectionChange? = returning
+        com.bot4vps.mobile.data.repository.runConnectionMigration(returning, { journal = it }, { error("Do not confirm an approved request again") },
+            { storage.migrate(next, origin) }, {}, {}, { storage.finishMigration(next, origin) })
+        assertNull(journal)
+        val restored = storage.read(origin, "seed")!!
+        assertEquals(key.publicKey, restored.publicKey); assertEquals(key.envelope, restored.envelope)
+        restored.sign(seed, origin, "phone", "challenge", "nonce")
+        storage.migrate(origin, next); storage.finishMigration(origin, next)
+        storage.migrate(next, origin); storage.finishMigration(next, origin)
+        assertEquals(key.envelope, storage.read(origin, "seed")!!.envelope)
+    }
+
+    @Test fun preflightRejectsAnOccupiedRetiredAddressWithoutWritingAnything() {
+        val records = mutableMapOf<String, String>()
+        val storage = storage(records)
+        val next = "https://panel.test:885"
+        storage.create(origin, "seed", seed)
+        storage.migrate(origin, next); storage.finishMigration(origin, next)
+        storage.create(origin, "seed", seed)
+        val before = records.toMap()
+        assertThrows(IllegalStateException::class.java) { storage.validateMigration(next, origin) }
+        assertEquals(before, records)
+    }
+
+    @Test fun roundTripCanResumeAfterEveryIndividualSecretWrite() {
+        val next = "https://panel.test:885"
+        // Inject a process/storage failure at each write, including the gap
+        // between retiring the old namespace and deleting its old index.
+        for (returning in listOf(false, true)) {
+            val baseline = mutableMapOf("app_lock" to "unchanged-pin", "totp" to "unchanged-totp")
+            val initial = storage(baseline)
+            val key = initial.create(origin, "seed", seed)
+            val unrelated = initial.create(other, "seed", seed)
+            if (returning) { initial.migrate(origin, next); initial.finishMigration(origin, next) }
+            val from = if (returning) next else origin
+            val to = if (returning) origin else next
+            var totalWrites = 0
+            val counter = storage(baseline.toMutableMap()) { _, _ -> totalWrites++ }
+            counter.migrate(from, to); counter.finishMigration(from, to)
+            for (failAt in 1..totalWrites) {
+                val records = baseline.toMutableMap()
+                var writes = 0
+                val interrupted = storage(records) { _, _ -> if (++writes == failAt) error("Simulated crash") }
+                assertTrue(runCatching { interrupted.migrate(from, to); interrupted.finishMigration(from, to) }.isFailure)
+                val resumed = storage(records)
+                resumed.migrate(from, to); resumed.finishMigration(from, to)
+                resumed.migrate(from, to); resumed.finishMigration(from, to)
+                val moved = resumed.read(to, "seed")!!
+                assertEquals(key.publicKey, moved.publicKey); assertEquals(key.envelope, moved.envelope)
+                moved.sign(seed, to, "phone", "id", "nonce")
+                assertEquals(unrelated, resumed.read(other, "seed"))
+                assertEquals("unchanged-pin", records["app_lock"]); assertEquals("unchanged-totp", records["totp"])
+                assertNull(resumed.read(from, "seed"))
+            }
+        }
+    }
+
+    @Test fun legacyCompletedMigrationWithoutReceiptResumesAfterDeviceRegistryMoved() {
+        val records = mutableMapOf<String, String>()
+        val storage = storage(records)
+        val key = storage.create(origin, "seed", seed)
+        val next = "https://panel.test:885"
+        storage.migrate(origin, next); storage.finishMigration(origin, next)
+        records.remove("operation_key_migrations") // The 1.7.4 storage format.
+        val before = records.toMap()
+        assertThrows(IllegalStateException::class.java) { storage.migrate(origin, next) }
+        assertEquals(before, records)
+        storage.migrate(origin, next, alreadyMoved = true); storage.finishMigration(origin, next)
+        assertEquals(key.envelope, storage.read(next, "seed")!!.envelope)
+        storage.migrate(next, origin); storage.finishMigration(next, origin)
+        assertEquals(key.publicKey, storage.read(origin, "seed")!!.publicKey)
+    }
+
+    @Test fun unaliasedDestinationWithAnExistingKeyIsAlsoRejected() {
+        val records = mutableMapOf<String, String>()
+        val storage = storage(records)
+        storage.create(origin, "seed", seed); storage.create(other, "seed", seed)
+        val before = records.toMap()
+        assertThrows(IllegalStateException::class.java) { storage.validateMigration(origin, other) }
+        assertEquals(before, records)
+    }
+
     @Test fun forgetRemovesEveryIndexedSeedOfThatPanelAndPreservesOtherSecrets() {
         val records = mutableMapOf("app_lock" to "pin", "cookies" to "session")
         val storage = storage(records)
@@ -80,4 +169,43 @@ class SensitiveKeyStorageTest {
         assertNotNull(devices[other])
         assertTrue(records.isEmpty())
     }
+    @Test fun addressMigrationPreservesKeyAndEnvelopeAcrossRetriesAndAnotherMove() {
+        val records = mutableMapOf<String, String>()
+        val storage = storage(records)
+        val key = storage.create(origin, "seed", seed)
+        val untouched = storage.create(other, "seed", seed)
+        val next = "https://panel.test:9444"
+        storage.migrate(origin, next); storage.migrate(origin, next)
+        storage.finishMigration(origin, next); storage.migrate(origin, next); storage.finishMigration(origin, next)
+        val moved = storage.read(next, "seed")!!
+        assertEquals(key.publicKey, moved.publicKey); assertEquals(key.envelope, moved.envelope)
+        assertEquals(origin, moved.contextOrigin)
+        // The authenticated origin remains valid without decrypting or rotating the key.
+        val proof = moved.sign(seed, next, "phone", "id", "nonce")
+        val public = java.security.KeyFactory.getInstance("EC").generatePublic(java.security.spec.X509EncodedKeySpec(java.util.Base64.getDecoder().decode(key.publicKey)))
+        assertTrue(java.security.Signature.getInstance("SHA256withECDSA").run {
+            initVerify(public); update("bot4vps-masterkey-view-v1\nphone\nid\nnonce".toByteArray(Charsets.US_ASCII)); verify(java.util.Base64.getDecoder().decode(proof))
+        })
+        val reconnected = storage.create(origin, "seed", seed)
+        assertNotEquals(key.publicKey, reconnected.publicKey)
+        assertEquals(key.publicKey, storage.read(next, "seed")!!.publicKey)
+        val last = "https://new.test:9444"
+        storage.migrate(next, last); storage.finishMigration(next, last)
+        assertEquals(key.envelope, storage.read(last, "seed")!!.envelope)
+        storage.remove(last, "seed")
+        assertNull(storage.read(last, "seed")); assertEquals(untouched, storage.read(other, "seed"))
+    }
+
+    @Test fun migratingBeforeFirstSensitiveUseStillSeparatesRepairedOldAddress() {
+        val records = mutableMapOf<String, String>()
+        val storage = storage(records)
+        val next = "https://panel.test:9444"
+        storage.migrate(origin, next); storage.finishMigration(origin, next)
+        val moved = storage.create(next, "seed", seed)
+        val repaired = storage.create(origin, "seed", seed)
+        assertNotEquals(moved.publicKey, repaired.publicKey)
+        storage.remove(origin, "seed")
+        assertEquals(moved, storage.read(next, "seed"))
+    }
+
 }

@@ -23,6 +23,7 @@ data class AppLockState(
     val needsPinSetup: Boolean = false,
     val usePin: Boolean = true,
     val pinChangeAuthorized: Boolean = false,
+    val biometricEnrollmentAuthorized: Boolean = false,
 ) {
     val enabled get() = phase != LockPhase.DISABLED && phase != LockPhase.LOADING
     val protectsContent get() = phase != LockPhase.DISABLED
@@ -61,6 +62,8 @@ class AppLockManager internal constructor(
     private var sensitiveResult: CompletableDeferred<ByteArray>? = null
     private var biometricSeed: ByteArray? = null
     private var activeSeed: ByteArray? = null
+    private var enrollmentTicket: Long? = null
+    private var enrollmentSeed: ByteArray? = null
     val sensitiveSeedId get() = record?.sensitiveSeed?.id
     private var preferPin = false
     private val mutableState = MutableStateFlow(AppLockState())
@@ -73,9 +76,18 @@ class AppLockManager internal constructor(
     val prompt = mutablePrompt.asStateFlow()
     init { reload() }
 
-    private fun publish() { mutableState.value = AppLockState(session.phase, session.foreground, session.generation, record?.biometric != null, busy, record?.retryAt ?: 0, error, revision,
+    private fun clearEnrollmentProof() { enrollmentSeed?.fill(0); enrollmentSeed = null; enrollmentTicket = null }
+    private fun rememberEnrollmentProof(seed: ByteArray) {
+        clearEnrollmentProof()
+        if (session.phase == LockPhase.UNLOCKED) {
+            enrollmentTicket = session.ticket(); enrollmentSeed = seed.copyOf()
+        }
+    }
+    private fun publish() {
+        if (enrollmentTicket?.let(session::valid) != true || session.phase != LockPhase.UNLOCKED) clearEnrollmentProof()
+        mutableState.value = AppLockState(session.phase, session.foreground, session.generation, record?.biometric != null, busy, record?.retryAt ?: 0, error, revision,
         record?.needsPin == true, legacyTicket?.let(session::valid) == true, preferPin || record?.biometric == null,
-        changeTicket?.let(session::valid) == true) }
+        changeTicket?.let(session::valid) == true, enrollmentSeed != null) }
     fun foreground() { backgroundLockJob?.cancel(); backgroundLockJob = null; session.foreground(); publish() }
     fun background() {
         if (!session.foreground) return
@@ -94,6 +106,7 @@ class AppLockManager internal constructor(
 
     fun reload() {
         if (busy) return
+        clearEnrollmentProof()
         busy = true; error = null; publish()
         scope.launch {
             try {
@@ -133,7 +146,12 @@ class AppLockManager internal constructor(
         }
     }
     fun unlock(pin: String) { pinAction(pin) { ticket ->
-        if (record?.needsPin == true) legacyTicket = ticket else session.unlock(ticket)
+        if (record?.needsPin == true) legacyTicket = ticket else {
+            val seed = try { pinSeed(pin, ticket) }
+            catch (e: CancellationException) { throw e }
+            catch (_: Exception) { if (!session.valid(ticket)) return@pinAction; null }
+            try { session.unlock(ticket); seed?.let(::rememberEnrollmentProof) } finally { seed?.fill(0) }
+        }
     } }
     fun authorizePinChange(pin: String) { pinAction(pin) { ticket ->
         check(record?.needsPin == false) { "Сначала завершите настройку PIN-кода" }
@@ -151,12 +169,14 @@ class AppLockManager internal constructor(
                 try { withContext(cryptoDispatcher) { record?.sensitiveSeed?.let { seedProtection.unprotect(it).open(old) } } } finally { old.fill('\u0000') }
             } ?: ByteArray(32).also { java.security.SecureRandom().nextBytes(it) }
             val id = record?.sensitiveSeed?.id ?: java.util.UUID.randomUUID().toString()
-            val (digest, wrapped) = try { withContext(cryptoDispatcher) { LockPin.create(chars) to seedProtection.protect(SensitivePinSeed.wrap(chars, seed, id)) } }
-                finally { chars.fill('\u0000'); seed.fill(0); changeSeed = null }
-            if (session.valid(ticket)) {
-                persist(AppLockRecord(pin = digest, biometric = record?.biometric, sensitiveSeed = wrapped))
-                legacyTicket = null; changeTicket = null; session.configured(true, ticket); revision++
-            }
+            try {
+                val (digest, wrapped) = withContext(cryptoDispatcher) { LockPin.create(chars) to seedProtection.protect(SensitivePinSeed.wrap(chars, seed, id)) }
+                if (session.valid(ticket)) {
+                    persist(AppLockRecord(pin = digest, biometric = record?.biometric, sensitiveSeed = wrapped))
+                    legacyTicket = null; changeTicket = null; session.configured(true, ticket); revision++
+                    rememberEnrollmentProof(seed)
+                }
+            } finally { chars.fill('\u0000'); seed.fill(0); changeSeed = null }
         }
     }
     fun disable(pin: String) { pinAction(pin) { ticket ->
@@ -176,16 +196,35 @@ class AppLockManager internal constructor(
             withContext(ioDispatcher) { biometrics.remove(saved.biometric?.alias) }
         } else {
             val seed = pinSeed(pin, ticket)
-            val (alias, cipher) = try { withContext(ioDispatcher) { biometrics.enrollment() } }
-                catch (e: Exception) {
-                    seed.fill(0)
-                    if (e is CancellationException) throw e
-                    throw IllegalStateException("Не удалось подготовить биометрию. Проверьте отпечаток и блокировку экрана в настройках Android.", e)
-                }
-            if (session.valid(ticket)) mutablePrompt.value = LockBiometricRequest(ticket, cipher, alias, seed)
-            else { seed.fill(0); withContext(ioDispatcher) { biometrics.remove(alias) } }
+            prepareBiometricEnrollment(ticket, seed)
         }
     } }
+    /** Reuses only the current PIN setup/unlock proof, never a saved PIN. */
+    fun enableBiometric() {
+        if (busy || mutablePrompt.value != null) return
+        val ticket = session.ticket()
+        if (ticket == null || session.phase != LockPhase.UNLOCKED || enrollmentTicket != ticket || enrollmentSeed == null) {
+            error = "Разблокируйте приложение PIN-кодом для настройки биометрии"; publish(); return
+        }
+        val seed = enrollmentSeed!!.copyOf()
+        busy = true; error = null; publish()
+        scope.launch {
+            try { prepareBiometricEnrollment(ticket, seed) }
+            catch (e: CancellationException) { seed.fill(0); throw e }
+            catch (e: Exception) { seed.fill(0); error = e.message ?: "Не удалось включить биометрию" }
+            finally { busy = false; publish() }
+        }
+    }
+    private suspend fun prepareBiometricEnrollment(ticket: Long, seed: ByteArray) {
+        val (alias, cipher) = try { withContext(ioDispatcher) { biometrics.enrollment() } }
+        catch (e: Exception) {
+            seed.fill(0)
+            if (e is CancellationException) throw e
+            throw IllegalStateException("Не удалось подготовить биометрию. Проверьте отпечаток и блокировку экрана в настройках Android.", e)
+        }
+        if (session.valid(ticket)) mutablePrompt.value = LockBiometricRequest(ticket, cipher, alias, seed)
+        else { seed.fill(0); withContext(ioDispatcher) { biometrics.remove(alias) } }
+    }
     fun biometricUnlock() {
         if (busy || mutablePrompt.value != null || session.phase != LockPhase.LOCKED) return
         val saved = record?.biometric ?: return

@@ -93,7 +93,7 @@ object SensitivePinDeviceCipher {
 }
 
 @Serializable
-data class SensitiveOperationKey(val publicKey: String, val envelope: SensitiveEnvelope) {
+data class SensitiveOperationKey(val publicKey: String, val envelope: SensitiveEnvelope, val contextOrigin: String? = null) {
     fun sign(seed: ByteArray, origin: String, device: String, challenge: String, nonce: String): String {
         require(listOf(device, challenge, nonce).all { it.isNotBlank() && '\n' !in it && it.length <= 128 })
         return signMessage(seed, origin, "bot4vps-masterkey-view-v1\n$device\n$challenge\n$nonce".toByteArray(Charsets.US_ASCII))
@@ -102,7 +102,7 @@ data class SensitiveOperationKey(val publicKey: String, val envelope: SensitiveE
         signMessage(seed, origin, masterKeyEnrollmentMessage(device, challenge, nonce, publicKey, deviceOperationPublicKey))
 
     private fun signMessage(seed: ByteArray, origin: String, message: ByteArray): String {
-        val bytes = envelope.open(seed, "bot4vps-sensitive-key-v1:$origin:$publicKey")
+        val bytes = envelope.open(seed, "bot4vps-sensitive-key-v1:${contextOrigin ?: origin}:$publicKey")
         return try {
             val key = KeyFactory.getInstance("EC").generatePrivate(PKCS8EncodedKeySpec(bytes))
             try {

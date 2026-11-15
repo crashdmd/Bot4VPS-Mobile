@@ -9,6 +9,7 @@ import javax.inject.Singleton
 class NativeWorkflow @Inject constructor() {
     private var destination: String? = null
     private var values = JsonObject(emptyMap())
+    @Synchronized fun clear() { destination = null; values = JsonObject(emptyMap()) }
     @Synchronized fun put(target: String, value: JsonObject) { destination = target; values = value }
     @Synchronized fun take(target: String?): JsonObject? {
         if (target != destination) return null

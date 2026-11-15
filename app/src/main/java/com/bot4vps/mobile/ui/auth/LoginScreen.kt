@@ -25,7 +25,7 @@ import com.bot4vps.mobile.ui.theme.*
 
 @Composable
 fun LoginScreen(onLoggedIn: () -> Unit, onChangeUrl: () -> Unit, onOtherPanel: () -> Unit,
-    viewModel: LoginViewModel = hiltViewModel()) {
+    onAuthenticator: () -> Unit = {}, viewModel: LoginViewModel = hiltViewModel()) {
     val state by viewModel.uiState.collectAsState()
     var manualCode by remember { mutableStateOf(false) }
     LaunchedEffect(state.loggedIn) { if (state.loggedIn) onLoggedIn() }
@@ -62,6 +62,7 @@ fun LoginScreen(onLoggedIn: () -> Unit, onChangeUrl: () -> Unit, onOtherPanel: (
                 else Text(if (state.pairingRequired) "Привязать телефон" else "Повторить подключение", fontWeight = FontWeight.SemiBold)
             }
             if (!state.pairingRequired) TextButton(enabled = !state.isLoading, onClick = viewModel::showPairing) { Text("Привязать телефон заново") }
+            TextButton(onClick = onAuthenticator) { Text("Authenticator · доступен без панели") }
             TextButton(onClick = { viewModel.cancelConnection(); onChangeUrl() }) { Text("Изменить адрес", color = OnSurfaceVariant) }
             TextButton(onClick = { viewModel.cancelConnection(); onOtherPanel() }) { Text("Подключиться к другой панели", color = OnSurfaceVariant) }
         }

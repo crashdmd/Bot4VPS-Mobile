@@ -53,7 +53,7 @@ import kotlinx.coroutines.delay
 @Composable
 fun SetupUrlScreen(
     onUrlSaved: () -> Unit,
-    viewModel: LoginViewModel = hiltViewModel()
+    onAuthenticator: () -> Unit = {}, viewModel: LoginViewModel = hiltViewModel()
 ) {
     var url by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
@@ -118,6 +118,7 @@ fun SetupUrlScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
+            TextButton(onClick = onAuthenticator) { Text("Authenticator · доступен без панели") }
             QrScanButton(enabled = !saving, onCode = { save(it) }, onError = { error = it })
             TextButton(enabled = !saving, onClick = { manualCode = true }) { Text("Ввести код") }
             if (manualCode) PanelTextField(

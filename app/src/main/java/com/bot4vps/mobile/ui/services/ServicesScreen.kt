@@ -48,7 +48,7 @@ fun serviceColor(kind: ServiceKind): Color {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ServicesScreen(onServer: (ServiceKind, String) -> Unit, onFiles: () -> Unit, onScriptsFiles:()->Unit=onFiles, onOperation:(String)->Unit={}, onHistory:(String)->Unit={}, onQueues:()->Unit={}, onBackups:()->Unit={}, onChecks:()->Unit={}, viewModel: ServicesViewModel = hiltViewModel()) {
+fun ServicesScreen(onServer: (ServiceKind, String) -> Unit, onFiles: () -> Unit, onScriptsFiles:()->Unit=onFiles, onOperation:(String)->Unit={}, onHistory:(String)->Unit={}, onQueues:()->Unit={}, onBackups:()->Unit={}, onChecks:()->Unit={}, onAuthenticator:()->Unit={}, viewModel: ServicesViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsState()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     LaunchedEffect(lifecycle, viewModel) { lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) { viewModel.observe() } }
@@ -67,24 +67,31 @@ fun ServicesScreen(onServer: (ServiceKind, String) -> Unit, onFiles: () -> Unit,
             DropdownMenu(menu, { menu = false }) {
                 ServiceKind.entries.forEach { service ->
                     DropdownMenuItem(text = { Text(service.title) }, leadingIcon = { Icon(serviceIcon(service), null) }, onClick = { menu = false; viewModel.select(service) })
-                    if (service == ServiceKind.XUI) DropdownMenuItem(text = { Text("Резервные копии") }, leadingIcon = { Icon(Icons.Default.Backup, null) }, onClick = { menu = false; onBackups() })
+                    if (service == ServiceKind.XUI) {
+                        DropdownMenuItem(text = { Text("Резервные копии") }, leadingIcon = { Icon(Icons.Default.Backup, null) }, onClick = { menu = false; onBackups() })
+                        DropdownMenuItem(text = { Text("Authenticator") }, leadingIcon = { Icon(Icons.Default.Password, null) }, onClick = { menu = false; onAuthenticator() })
+                    }
                 }
                 DropdownMenuItem(text = { Text("Проверки серверов") }, leadingIcon = { Icon(Icons.Default.NetworkCheck, null) }, onClick = { menu = false; onChecks() })
             }
         }, actions = {
             if (kind != null) {
+                IconButton(onClick = viewModel::revealAddresses) { Icon(if (state.revealAddresses) Icons.Default.VisibilityOff else Icons.Default.Visibility, if (state.revealAddresses) "Скрыть IP и домены" else "Показать IP и домены") }
                 IconButton(onClick = viewModel::sort) { Icon(Icons.Default.Sort, "Сортировка") }
             }
         })
     }) { padding ->
-        Refreshable(state.loading, viewModel::refresh, Modifier.fillMaxSize().padding(padding)) {
+        Refreshable(state.loading, viewModel::refresh, Modifier.fillMaxSize().padding(padding), enabled = kind != null) {
         LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(16.dp), verticalArrangement = refreshArrangement(12.dp)) {
             if (kind == null) {
                 item { Text("Выберите, с чем работать", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold) }
                 item { Text("Управление сервисами на ваших серверах", color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 ServiceKind.entries.forEach { service ->
                     item { ActionRow(service.title, service.description, serviceIcon(service), { viewModel.select(service) }, iconColor = serviceColor(service)) }
-                    if (service == ServiceKind.XUI) item { ActionRow("Резервные копии", "Архивы панели и серверов, восстановление и расписание", Icons.Default.Backup, onBackups) }
+                    if (service == ServiceKind.XUI) {
+                        item { ActionRow("Резервные копии", "Архивы панели и серверов, восстановление и расписание", Icons.Default.Backup, onBackups) }
+                        item { ActionRow("Authenticator", "Одноразовые коды для Bot4VPS и других сервисов", Icons.Default.Password, onAuthenticator) }
+                    }
                 }
                 item { ActionRow("Очереди задач", "Выполнение и ожидание задач на серверах", Icons.Default.Queue, onQueues) }
                 item { ActionRow("Проверки серверов", "Пинг всех серверов и SSL-сертификаты", Icons.Default.NetworkCheck, onChecks) }
@@ -108,7 +115,7 @@ fun ServicesScreen(onServer: (ServiceKind, String) -> Unit, onFiles: () -> Unit,
                                 Icon(serviceIcon(kind), null, Modifier.size(20.dp), tint = serviceColor(kind))
                                 Column(Modifier.weight(1f)) {
                                     Text(server.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                                    Text(listOfNotNull(server.group, server.host.takeIf { it.isNotBlank() }).joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(listOfNotNull(server.group, server.host.takeIf { it.isNotBlank() }?.let { if (state.revealAddresses) it else "••••••••" }).joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 Icon(Icons.Default.ChevronRight, "Открыть")
                             }

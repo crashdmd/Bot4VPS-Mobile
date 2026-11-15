@@ -17,17 +17,17 @@ class AuthViewModel @Inject constructor(
     private val authRepository: AuthRepository
 ) : ViewModel() {
 
+    val baseUrl = authRepository.baseUrl
     private val _startDestination = MutableStateFlow<String?>(null)
     val startDestination: StateFlow<String?> = _startDestination.asStateFlow()
 
     init {
         viewModelScope.launch {
-            val url = authRepository.baseUrl.first()
-            _startDestination.value = if (url.isNullOrBlank()) {
-                Routes.SETUP_URL
-            } else {
-                Routes.LOGIN
-            }
+            try { authRepository.refreshProfiles() } catch (cancel: kotlinx.coroutines.CancellationException) { throw cancel } catch (_: Exception) { }
+            val url = runCatching { authRepository.baseUrl.first() }.getOrNull()
+            val paired = !url.isNullOrBlank() && runCatching { authRepository.isPairedApiAddress(url) }.getOrDefault(false)
+            val revoked = runCatching { authRepository.profiles.first().any { com.bot4vps.mobile.data.model.panelProfileOrigin(it.url) == com.bot4vps.mobile.data.model.panelProfileOrigin(url) && it.revoked } }.getOrDefault(true)
+            _startDestination.value = if (com.bot4vps.mobile.data.model.openAuthenticatorFirst(!url.isNullOrBlank(), paired, revoked)) Routes.ROOT_AUTHENTICATOR else Routes.LOGIN
         }
     }
 }

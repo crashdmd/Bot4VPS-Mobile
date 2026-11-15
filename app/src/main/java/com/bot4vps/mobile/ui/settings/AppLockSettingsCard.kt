@@ -35,13 +35,16 @@ fun AppLockSettingsCard(manager: AppLockManager) {
         if (state.enabled) {
             HorizontalDivider()
             SettingRow("Вход по биометрии", if (biometricAvailable) "Отпечаток или защищённое распознавание лица вместо PIN-кода" else "Защищённая биометрия не настроена на телефоне") {
-                Switch(state.biometricEnabled, { open(if (it) LockAction.BIOMETRIC_ON else LockAction.BIOMETRIC_OFF) }, enabled = !state.busy && (biometricAvailable || state.biometricEnabled))
+                Switch(state.biometricEnabled, { enabled ->
+                    if (enabled && state.biometricEnrollmentAuthorized) manager.enableBiometric()
+                    else open(if (enabled) LockAction.BIOMETRIC_ON else LockAction.BIOMETRIC_OFF)
+                }, enabled = !state.busy && (biometricAvailable || state.biometricEnabled))
             }
             HorizontalDivider()
             SettingRow("PIN-код приложения", "Для смены нужен текущий PIN-код") {
                 PanelSecondaryButton(onClick = { open(LockAction.CHANGE) }, enabled = !state.busy) { Text("Изменить") }
             }
-            Text("Содержимое скрыто в последних приложениях и на снимках экрана. Уведомления показывают только наличие события.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Содержимое скрыто в последних приложениях и на снимках экрана. Уведомления показывают описание события без паролей и секретов.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (action == null) state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     }
