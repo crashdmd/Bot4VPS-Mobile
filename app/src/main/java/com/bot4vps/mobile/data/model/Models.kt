@@ -144,8 +144,14 @@ data class TaskSummary(
     @SerialName("is_done") val isDone: Boolean = false,
     val error: String? = null,
     @SerialName("output_lines") val outputLines: List<String> = emptyList(),
-    val result: TaskResult? = null
-)
+    val result: TaskResult? = null,
+    val unavailable: Boolean = false
+) {
+    val canPoll get() = !isDone && !unavailable
+    fun missing() = copy(status = "unavailable", unavailable = true)
+}
+
+const val TASK_MISSING_MESSAGE = "Задача не найдена. Итог операции неизвестен. Откройте список задач или проверьте сервис. Команда повторно не отправляется."
 
 @Serializable
 data class TasksHistoryResponse(val tasks: List<TaskSummary> = emptyList())

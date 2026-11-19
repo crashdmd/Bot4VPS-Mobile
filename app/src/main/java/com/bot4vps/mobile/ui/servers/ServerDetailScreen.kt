@@ -103,6 +103,14 @@ fun ServerDetailScreen(serverId: String, onBack: () -> Unit, onTerminal: () -> U
                     server.keyPath?.takeIf(String::isNotBlank)?.let { InfoRow("Ключ", it) }
                     if (server.certificateCheck == true) {
                         InfoRow("Домен SSL", server.sslHost ?: state.monitor.text("ssl_host") ?: "—")
+                        state.monitor.text("ssl_ip")?.takeIf { it.isNotBlank() && it != server.host && it != state.monitor.text("host_ip") }?.let { sslIp ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) { InfoRow("Публичный IP SSL", sslIp) }
+                                IconButton(onClick = { clipboard.setText(AnnotatedString(sslIp)); Toast.makeText(context, "IP скопирован", Toast.LENGTH_SHORT).show() }) {
+                                    Icon(Icons.Default.ContentCopy, "Копировать IP SSL", Modifier.size(18.dp))
+                                }
+                            }
+                        }
                         val cert = state.monitor["certificate"] as? JsonObject
                         val days = cert?.number("days_left")?.toInt()
                         InfoRow("Срок SSL", days?.let { if (it < 0) "Истёк" else "$it дн." } ?: "Нет данных")
@@ -115,6 +123,7 @@ fun ServerDetailScreen(serverId: String, onBack: () -> Unit, onTerminal: () -> U
                         val service = state.services[kind]
                         val error = state.serviceErrors[kind]
                         val subtitle = when { error != null -> "Не удалось получить состояние: $error"; service == null -> "Загрузка состояния…";
+                            service.unknown -> "Не удалось проверить: ${service.checkError}";
                             service.blocked -> service.blockReason; service.classic -> "Классический конфиг · нужна миграция";
                             service.installed -> (if (serviceActive(service.status)) "Работает" else "Остановлен") + service.status.text("version")?.let { " · $it" }.orEmpty(); else -> "Не установлен · настроить" }
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)

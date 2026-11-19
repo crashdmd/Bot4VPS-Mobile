@@ -26,8 +26,9 @@ fun xuiForm(action: String, state: JsonObject, supplied: Map<String, JsonElement
     val port = field("Порт выпуска", "integer", JsonPrimitive(80), true, mapOf("minimum" to JsonPrimitive(1), "maximum" to JsonPrimitive(65535)))
     val fields: Map<String, JsonObject> = when (action) {
         "set_bbr", "unit_action", "set_autostart", "fakesite_remove" -> emptyMap()
-        "change_username" -> linkedMapOf("username" to field("Новый логин", required = true, extras = mapOf("minLength" to JsonPrimitive(3), "maxLength" to JsonPrimitive(32))), "restart" to restart)
-        "change_password" -> linkedMapOf("password" to field("Новый пароль", required = true, extras = mapOf("minLength" to JsonPrimitive(8), "secret" to JsonPrimitive(true))), "restart" to restart)
+        "change_credentials" -> linkedMapOf(
+            "username" to field("Новый логин", required = true, extras = mapOf("minLength" to JsonPrimitive(3), "maxLength" to JsonPrimitive(32))),
+            "password" to field("Новый пароль", required = true, extras = mapOf("secret" to JsonPrimitive(true))), "restart" to restart)
         "change_port" -> linkedMapOf("port" to field("Новый порт", "integer", state["port"], true, mapOf("minimum" to JsonPrimitive(1), "maximum" to JsonPrimitive(65535))), "close_old_port" to field("Закрыть старый порт в firewall", "boolean", JsonPrimitive(true)), "restart" to restart)
         "change_path" -> linkedMapOf("path" to field("Новый путь", required = true, extras = mapOf("minLength" to JsonPrimitive(4), "maxLength" to JsonPrimitive(64))), "restart" to restart)
         "reset_settings", "update_geo" -> mapOf("restart" to restart)
@@ -53,7 +54,13 @@ fun xuiForm(action: String, state: JsonObject, supplied: Map<String, JsonElement
 fun xuiFormError(action: String, values: JsonObject): String? {
     fun text(key: String) = values.text(key).orEmpty().trim()
     if (action in setOf("cert_issue_domain", "fakesite_install") && !Regex("(?i)^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\\.)+[a-z]{2,}$").matches(text("domain"))) return "Домен: например panel.example.com"
-    if (action == "change_username" && !Regex("[A-Za-z0-9._-]{3,32}").matches(text("username"))) return "Логин: 3–32 символа, латиница, цифры, точка, дефис или подчёркивание"
+    if (action == "change_credentials") {
+        if (!Regex("[A-Za-z0-9._-]{3,32}").matches(text("username"))) return "Логин: 3–32 символа, латиница, цифры, точка, дефис или подчёркивание"
+        val password = values.text("password").orEmpty()
+        if (password.codePointCount(0, password.length) < 8) return "Пароль: минимум 8 символов"
+        if (password.any { it.code < 0x20 || it.code == 0x7f }) return "Пароль содержит управляющие символы"
+        if (password.toByteArray(Charsets.UTF_8).size > 72) return "Пароль: максимум 72 байта UTF-8 (ограничение 3x-ui)"
+    }
     if (action == "change_path" && !Regex("[A-Za-z0-9_-]{4,64}").matches(text("path"))) return "Путь: 4–64 символа, латиница, цифры, дефис или подчёркивание"
     if (action == "change_port" && text("port") == "80") return "Порт 80 зарезервирован для выпуска сертификатов"
     if (action == "update" && text("tag").isNotBlank() && !Regex("v?\\d+\\.\\d+\\.\\d+").matches(text("tag"))) return "Версия: формат X.Y.Z"
@@ -68,6 +75,7 @@ fun xuiFormError(action: String, values: JsonObject): String? {
 
 fun xuiParams(action: String, values: JsonObject, state: JsonObject): JsonObject {
     val cleaned = JsonObject(values.filterValues { it != JsonNull && !(it is JsonPrimitive && it.isString && it.content.isBlank()) })
+    if (action == "change_credentials") return JsonObject(cleaned + mapOf("username" to JsonPrimitive(values.text("username").orEmpty().trim()), "password" to JsonPrimitive(values.text("password").orEmpty())))
     if (action !in setOf("cert_renew", "cert_remove")) return cleaned
     val selected = xuiCertificates(state).find { it.id == values.text("certificate") } ?: error("Сертификат больше недоступен. Обновите список.")
     return buildJsonObject { put("domain", selected.domain); put("engine", selected.engine) }
@@ -75,8 +83,9 @@ fun xuiParams(action: String, values: JsonObject, state: JsonObject): JsonObject
 
 fun xuiActionDescription(action: String, state: JsonObject): String = when (action) {
     "set_bbr" -> if ((state["bbr"] as? JsonObject)?.flag("enabled") != true) "Включит алгоритм TCP BBR. Текущий алгоритм сохранится и вернётся при отключении." else if ((state["bbr"] as? JsonObject)?.flag("managed") != true) "BBR включён вне Bot4VPS. Исходные значения неизвестны: будут восстановлены стандартные fq_cubic/cubic." else "Вернёт алгоритм, который использовался до включения BBR."
-    "cert_issue_domain" -> "A-запись домена должна указывать на сервер. Порт выпуска должен быть доступен из интернета. Порт 80 подготовим на время выпуска и затем восстановим. Назначение панели включает HTTPS и перезапускает её."
-    "cert_issue_ip" -> "Короткоживущий сертификат Let's Encrypt (~6 дней), автоматически обновляется acme.sh. Порт 80 должен быть доступен из интернета. Сертификат будет назначен панели."
+    "cert_issue_domain" -> "A-запись домена должна указывать на сервер. Порт выпуска должен быть доступен из интернета. Порт 80 подготовим на время выпуска и затем восстановим. Назначение панели включает HTTPS и перезапускает её. После успешного выпуска и назначения Bot4VPS включает SSL-мониторинг фактического домена сертификата."
+    "cert_issue_ip" -> "Короткоживущий сертификат Let's Encrypt (~6 дней), автоматически обновляется acme.sh. Порт 80 должен быть доступен из интернета. Сертификат будет назначен панели. После успешного выпуска и назначения Bot4VPS включает SSL-мониторинг фактического IP сертификата."
+    "change_credentials" -> "Логин и пароль меняются одновременно. Пароль: минимум 8 символов, максимум 72 байта UTF-8, без управляющих символов. Требуется Bot4VPS 7.2 или новее. Изменения применятся после перезапуска панели."
     "cert_renew" -> "Перевыпустит выбранный сертификат его движком. Хук обновит файлы и перезапустит панель. Порт 80 подготовим на время проверки и затем восстановим."
     "cert_remove" -> "Сертификат будет отозван в Let's Encrypt и удалён с сервера его движком. Если панель использовала его, пути сбросятся и панель перезапустится с HTTP."
     "fakesite_install" -> "A-запись домена должна указывать на этот сервер. Будет создан локальный HTTPS-сайт SelfSNI с Let's Encrypt. Инбаунды Reality не изменяются. После установки настройте вручную: Dest = 127.0.0.1:9000, Xver = 1, SNI = ваш домен."

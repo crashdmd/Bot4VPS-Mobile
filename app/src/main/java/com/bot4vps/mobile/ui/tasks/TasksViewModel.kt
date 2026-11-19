@@ -4,6 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bot4vps.mobile.data.api.errorText
+import com.bot4vps.mobile.data.api.ApiError
 import com.bot4vps.mobile.data.model.*
 import com.bot4vps.mobile.data.repository.*
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -61,7 +62,7 @@ class TasksViewModel @Inject constructor(private val saved: SavedStateHandle, pr
         detailRequest = viewModelScope.launch {
             try { val full = repo.task(task.id); _ui.update { if (it.selected?.id == task.id) it.copy(selected = full) else it } }
             catch (e: CancellationException) { throw e }
-            catch (e: Exception) { _ui.update { it.copy(error = errorText(e)) } }
+            catch (e: Exception) { detailFailure(task.id, e) }
         }
     }
     fun closeDetail() { detailRequest?.cancel(); _ui.update { it.copy(selected = null, error = null) }; refresh() }
@@ -69,9 +70,12 @@ class TasksViewModel @Inject constructor(private val saved: SavedStateHandle, pr
         if (_ui.value.busy || detailRequest?.isActive == true || listRequest?.isActive == true) return
         try {
             val selected = _ui.value.selected
-            if (selected != null && !selected.isDone) {
-                val full = repo.task(selected.id)
-                _ui.update { if (it.selected?.id == full.id) it.copy(selected = full, error = null) else it }
+            if (selected != null && selected.canPoll) {
+                try {
+                    val full = repo.observe(selected)
+                    _ui.update { if (it.selected?.id == full.id) it.copy(selected = full, error = null) else it }
+                } catch (e: CancellationException) { throw e }
+                catch (e: Exception) { detailFailure(selected.id, e) }
             } else if (selected == null) {
                 refresh(); listRequest?.join()
             }
@@ -80,7 +84,7 @@ class TasksViewModel @Inject constructor(private val saved: SavedStateHandle, pr
     }
     fun cancelSelected() {
         val selected = _ui.value.selected ?: return
-        if (_ui.value.busy || selected.isDone) return
+        if (_ui.value.busy || !selected.canPoll) return
         viewModelScope.launch {
             _ui.update { it.copy(busy = true, error = null) }
             try { repo.cancel(selected.id); _ui.update { it.copy(busy = false) }; open(selected) }
@@ -89,6 +93,13 @@ class TasksViewModel @Inject constructor(private val saved: SavedStateHandle, pr
         }
     }
     fun consumeNotice() { _ui.update { it.copy(notice = null) } }
+    private fun detailFailure(id: String, error: Exception) {
+        _ui.update { current ->
+            if (current.selected?.id != id) current
+            else if (taskNotFound(error)) current.copy(selected = current.selected.missing(), error = null)
+            else current.copy(error = errorText(error))
+        }
+    }
     fun clearHistory() {
         if (_ui.value.busy || _ui.value.selected != null) return
         listRequest?.cancel()

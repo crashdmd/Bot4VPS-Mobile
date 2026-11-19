@@ -44,7 +44,8 @@ fun ServiceDetailScreen(onBack: () -> Unit, onOperation: (String) -> Unit, onAdv
     val kind = viewModel.kind
     val detail = state.detail
     val data = detail?.state ?: JsonObject(emptyMap())
-    val installed = data.flag("installed") && !data.flag("needs_migration")
+    val unknown = detail != null && !serviceStateKnown(data)
+    val installed = !unknown && data.flag("installed") && !data.flag("needs_migration")
     val blocked = detail?.server?.blocked == true
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     LaunchedEffect(viewModel, lifecycle) {
@@ -74,8 +75,8 @@ fun ServiceDetailScreen(onBack: () -> Unit, onOperation: (String) -> Unit, onAdv
                         detail?.server?.host?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     }
                 }
-                if (detail != null) StatusBadge(if (blocked) detail.server.blockReason else if (data.flag("needs_migration")) "Классический конфиг" else if (installed) "Установлен" else "Не установлен",
-                    if (blocked) StatusTone.BAD else if (installed) StatusTone.GOOD else StatusTone.NEUTRAL)
+                if (detail != null) StatusBadge(if (unknown) "Не удалось проверить" else if (blocked) detail.server.blockReason else if (data.flag("needs_migration")) "Классический конфиг" else if (installed) "Установлен" else "Не установлен",
+                    if (unknown) StatusTone.WARNING else if (blocked) StatusTone.BAD else if (installed) StatusTone.GOOD else StatusTone.NEUTRAL)
                 if (installed && !blocked) InfoRow("Сервис", if (serviceActive(data)) "Работает" else "Остановлен")
                 data.text("version")?.let { InfoRow("Версия", it) }
             } }
@@ -86,8 +87,15 @@ fun ServiceDetailScreen(onBack: () -> Unit, onOperation: (String) -> Unit, onAdv
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(task.name ?: "Задача"); StatusBadge(taskStatusLabel(task.status), if (task.status == "failed") StatusTone.BAD else StatusTone.NEUTRAL) }
                 task.outputLines.lastOrNull()?.let { Text(it, maxLines = 3, style = MaterialTheme.typography.bodySmall) }
                 TextButton(onClick = { onHistory(task.id) }) { Text("Открыть вывод задачи") }
+                if (task.unavailable) {
+                    Text(TASK_MISSING_MESSAGE, style = MaterialTheme.typography.bodySmall)
+                    TextButton(onClick = { onHistory(null) }) { Text("Открыть список задач") }
+                    TextButton(onClick = viewModel::refresh) { Text("Проверить сервис") }
+                }
+                TextButton(onClick = viewModel::dismissTask) { Text("Закрыть наблюдение") }
             } } }
-            if (blocked) item { ErrorCard("${detail?.server?.blockReason}. Управление станет доступно после восстановления соединения.") }
+            if (unknown) item { ErrorCard(data.text("error") ?: "Панель не подтвердила состояние сервиса", viewModel::refresh) }
+            else if (blocked) item { ErrorCard("${detail?.server?.blockReason}. Управление станет доступно после восстановления соединения.") }
             else if (detail != null && !installed) {
                 item { ActionRow(if (data.flag("needs_migration")) "Перенести WireGuard в Bot4VPS" else "Установить ${kind.title}",
                     if (data.flag("needs_migration")) "Подготовить существующий конфиг к управлению" else "Настроить сервис на этом сервере", Icons.Default.Add,
@@ -158,7 +166,7 @@ fun ServiceDetailScreen(onBack: () -> Unit, onOperation: (String) -> Unit, onAdv
 @Composable
 private fun ServiceEditorSheet(editor: ServiceEditor, busy: Boolean, error: String?, onDismiss: () -> Unit, onSubmit: (JsonObject) -> Unit, server: String) {
     fun generated() = buildString { val random = java.security.SecureRandom(); val alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"; repeat(20) { append(alphabet[random.nextInt(alphabet.length)]) } }
-    var values by remember(editor) { mutableStateOf(if (editor.xuiAction == "change_password") JsonObject(editor.initial + ("password" to JsonPrimitive(generated()))) else if (editor.xuiAction == "change_path") JsonObject(editor.initial + ("path" to JsonPrimitive(generated()))) else editor.initial) }
+    var values by remember(editor) { mutableStateOf(if (editor.xuiAction == "change_credentials") JsonObject(editor.initial + ("password" to JsonPrimitive(generated()))) else if (editor.xuiAction == "change_path") JsonObject(editor.initial + ("path" to JsonPrimitive(generated()))) else editor.initial) }
     var confirmSite by remember(editor) { mutableStateOf(false) }
     if (confirmSite) PanelAlertDialog(onDismissRequest = { confirmSite = false }, title = { Text("Установить сайт-заглушку?") }, text = { Text("Для ${values.text("domain").orEmpty()} будет создан локальный HTTPS-сайт. Настройки Reality останутся без изменений.") }, confirmButton = { TextButton(onClick = { confirmSite = false; onSubmit(values) }, enabled = !busy) { Text("Установить") } }, dismissButton = { TextButton(onClick = { confirmSite = false }) { Text("Отмена") } })
     ModalBottomSheet(onDismissRequest = { if (!busy) onDismiss() }) {
@@ -172,7 +180,7 @@ private fun ServiceEditorSheet(editor: ServiceEditor, busy: Boolean, error: Stri
                     if (!busy) values = JsonObject(values.toMutableMap().apply { if (next == null) remove(name) else put(name, next) })
                 }, choices = editor.choices)
             }
-            if (editor.xuiAction in setOf("change_password", "change_path")) PanelSecondaryButton(onClick = { values = JsonObject(values + ((if (editor.xuiAction == "change_password") "password" else "path") to JsonPrimitive(generated()))) }, enabled = !busy) { Text(if (editor.xuiAction == "change_password") "Сгенерировать пароль" else "Сгенерировать путь") }
+            if (editor.xuiAction in setOf("change_credentials", "change_path")) PanelSecondaryButton(onClick = { values = JsonObject(values + ((if (editor.xuiAction == "change_credentials") "password" else "path") to JsonPrimitive(generated()))) }, enabled = !busy) { Text(if (editor.xuiAction == "change_credentials") "Сгенерировать пароль" else "Сгенерировать путь") }
             if (editor.operation.destructive) Text("Действие изменит состояние выбранного объекта.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             error?.let { ErrorCard(it) }
             if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -317,4 +325,4 @@ private fun ServiceSettings(data: JsonObject, kind: ServiceKind, vm: ServiceDeta
     }
 }
 
-fun taskStatusLabel(status: String): String = when (status) { "queued" -> "В очереди"; "running" -> "Выполняется"; "success", "completed" -> "Завершена"; "success_warn" -> "Завершена с замечаниями"; "failed" -> "Ошибка"; "cancelled" -> "Отменена"; else -> status }
+fun taskStatusLabel(status: String): String = when (status) { "unavailable" -> "Итог неизвестен"; "queued" -> "В очереди"; "running" -> "Выполняется"; "success", "completed" -> "Завершена"; "success_warn" -> "Завершена с замечаниями"; "failed" -> "Ошибка"; "cancelled" -> "Отменена"; else -> status }

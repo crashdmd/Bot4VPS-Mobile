@@ -82,6 +82,33 @@ class ContractTests(unittest.TestCase):
         op=self.ops['POST /api/services/3x-ui/{server_id}/action/set_autostart']
         self.assertEqual(op['body']['properties']['params']['properties']['enabled']['type'],'boolean')
 
+    def test_credentials_are_one_required_operation_and_old_actions_are_removed(self):
+        op=self.ops['POST /api/services/3x-ui/{server_id}/action/change_credentials']
+        self.assertEqual(op['title'],'Сменить логин и пароль')
+        params=op['body']['properties']['params']
+        self.assertEqual(set(params['required']),{'username','password'})
+        self.assertTrue(params['properties']['password']['secret'])
+        self.assertEqual(params['properties']['password']['maxUtf8Bytes'],72)
+        for old in ('change_username','change_password'):
+            self.assertNotIn('POST /api/services/3x-ui/{server_id}/action/'+old,self.ops)
+
+    def test_certificate_extension_is_optional_object_without_new_toggle(self):
+        for action in ('install','cert_issue_domain','cert_issue_ip'):
+            params=self.ops[f'POST /api/services/3x-ui/{{server_id}}/enqueue/{action}']['body']['properties']['params']
+            extension=params['properties']['post_issue']
+            self.assertEqual(extension['type'],'object')
+            self.assertEqual(extension['properties']['monitor_ssl']['type'],'boolean')
+            self.assertTrue(extension['nullable'])
+            self.assertTrue(extension['hidden'])
+            self.assertNotIn('default',extension)
+            self.assertNotIn('post_issue',params.get('required',[]))
+
+    def test_key_upload_supports_new_name_without_changing_file_part(self):
+        fields={f['name']:f for f in self.ops['POST /api/files/upload']['fields']}
+        self.assertEqual(fields['name']['location'],'query')
+        self.assertEqual(fields['file']['location'],'form')
+        self.assertEqual(fields['file']['type'],'file')
+
     def test_compose_actions_identify_deployment_and_source(self):
         for action in ('compose_up','compose_down','compose_restart'):
             params=self.ops[f'POST /api/services/docker/{{server_id}}/enqueue/{action}']['body']['properties']['params']

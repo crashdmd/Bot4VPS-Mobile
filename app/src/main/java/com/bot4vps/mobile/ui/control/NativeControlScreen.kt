@@ -89,7 +89,7 @@ fun NativeSectionScreen(section: String, onBack: (() -> Unit)? = null, onOperati
             enabled = state.operation?.method == "GET" && state.operation?.download != true && state.operation?.path?.endsWith("/ping") != true) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding=PaddingValues(16.dp), verticalArrangement=refreshArrangement(10.dp)) {
             if (section == "events" && onHistory != null) item { ActionRow("История задач", "Выполнение и вывод задач", Icons.Default.History, onHistory) }
-            if (section == "files") item { Text(if (state.selectedView == "keys") "SSH-ключи панели. Используемый ключ удалить нельзя." else if (state.selectedView == "scripts") "Скрипты для запуска на серверах" else "Локальная библиотека Compose. Развёртывание — в разделе Docker.", style=MaterialTheme.typography.bodySmall) }
+            if (section == "files") item { Text(if (state.selectedView == "keys") "SSH-ключи панели. Используемый ключ нельзя удалить или заменить." else if (state.selectedView == "scripts") "Скрипты для запуска на серверах" else "Локальная библиотека Compose. Развёртывание — в разделе Docker.", style=MaterialTheme.typography.bodySmall) }
             if (insideProject) item { Row { TextButton(onClick=viewModel::parentDirectory, enabled=!state.busy) { Text("← Назад") }; Text(state.fields["project"]?.jsonPrimitive?.content.orEmpty()+" / "+state.fields["directory"]?.jsonPrimitive?.content.orEmpty()) } }
             if (section == "audit") {
                 item { TextButton(onClick={ filters=!filters }) { Text(if(filters) "Скрыть фильтры" else "Фильтры") } }
@@ -160,6 +160,7 @@ fun NativeActionScreen(onBack: () -> Unit, onLogin: () -> Unit, onOperation: (St
                 ElevatedCard { Column(Modifier.padding(12.dp)) {
                     Text(error, color = MaterialTheme.colorScheme.error)
                     if(state.prefillFailed) TextButton(onClick=viewModel::retryPrefill) { Text("Прочитать текущие значения") }
+                    if(state.uploadConflict) TextButton(onClick=viewModel::uploadWithNewName) { Text("Загрузить под другим именем") }
                     if (error.contains("Сессия") || error.contains("авторизац")) TextButton(onClick = onLogin) { Text("Войти заново") }
                 } }
             } }

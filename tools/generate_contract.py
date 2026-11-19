@@ -523,6 +523,7 @@ def main():
             op['id']='POST '+op['path'];op['section']={'3x-ui':'xui'}.get(sid,sid)
             op['fields']=[f for f in op['fields'] if f['name'] not in ('sid','action')]
             op['title']=' · '.join(WORDS.get(t,LABELS.get(t,t.capitalize())) for t in action.split('_'))
+            if sid=='3x-ui' and action=='change_credentials':op['title']='Сменить логин и пароль'
             op['group']='Операции'
             props={}
             for call in ast.walk(n):
@@ -573,7 +574,8 @@ def main():
     for action in ('compose_up','compose_down','compose_restart'):
         action_overrides['docker',action]=obj({'stack':dict(field('stack'),title='Проект'), 'source':{'type':'string','title':'Источник','enum':['library','server'],'default':'library'}, 'key':dict(field('key'),title='Развёртывание',nullable=True,secret=False)},['stack','source'])
     for action in ('set_autostart','set_bbr'):action_overrides['3x-ui',action]=obj({'enabled':field('enabled','boolean',False)},['enabled'])
-    for action,key in [('change_username','username'),('change_password','password'),('change_port','port'),('change_path','path')]:
+    action_overrides['3x-ui','change_credentials']=obj({'username':dict(field('username'),minLength=3,maxLength=32), 'password':dict(field('password'),maxUtf8Bytes=72), 'restart':field('restart','boolean',True)},['username','password'])
+    for action,key in [('change_port','port'),('change_path','path')]:
         action_overrides['3x-ui',action]=obj({key:field(key,'integer' if key=='port' else 'string'),'restart':field('restart','boolean',True)},[key])
     for op in operations:
         if op['path'].endswith('/export-zip'):
@@ -592,6 +594,13 @@ def main():
                 sid=next((s for s in ('docker','wireguard','3x-ui') if '/'+s+'/' in op['path']),None)
                 action=op['path'].split('/')[-1]
                 if (sid,action) in action_overrides:props['params']=dict(action_overrides[sid,action],title='Параметры')
+                if sid=='3x-ui' and action in ('install','cert_issue_domain','cert_issue_ip'):
+                    # Optional extension object. Omission keeps server defaults;
+                    # this release adds no monitoring toggle to the user form.
+                    props['params']['properties']['post_issue']=dict(obj({'monitor_ssl':field('monitor_ssl','boolean')}),title='После выпуска сертификата',nullable=True,hidden=True)
+        if op['path']=='/api/files/upload':
+            for upload_field in op['fields']:
+                if upload_field['name']=='name':upload_field['title']='Имя файла на панели'
     args.output.parent.mkdir(parents=True,exist_ok=True)
     version_tree = ast.parse((args.repo / 'core/version.py').read_text())
     version = next(ast.literal_eval(node.value) for node in version_tree.body

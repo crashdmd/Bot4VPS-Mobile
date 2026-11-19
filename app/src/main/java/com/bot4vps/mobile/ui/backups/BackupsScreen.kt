@@ -206,6 +206,7 @@ private fun BackupSettingsEditor(state: BackupsState, vm: BackupsViewModel) {
     SettingsCard("Копирование ${state.target}","Расписание и защита архивов относятся только к этой цели.") {
         if(server) {
             PanelTextField(paths,{ paths=it },label={ Text("Файлы и папки") },supportingText={ Text("По одному абсолютному пути на строке, например /etc и /home. Существующие исключения сохраняются.") },minLines=3,maxLines=6,enabled=editable,modifier=Modifier.fillMaxWidth())
+            Text("Источники, доступные SSH-пользователю, можно копировать без sudo. Если прав недостаточно, копирование остановится с перечнем недоступных путей.", style=MaterialTheme.typography.bodySmall, color=MaterialTheme.colorScheme.onSurfaceVariant)
         } else Text("Состав копии панели определяется Bot4VPS: конфигурация, данные и ключи доступа.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
         HorizontalDivider()
         ToggleSetting("Ежедневная копия","Автоматическое создание по времени панели",enabled,editable,{ enabled=it })

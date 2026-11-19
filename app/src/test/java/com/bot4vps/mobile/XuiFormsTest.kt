@@ -6,6 +6,29 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class XuiFormsTest {
+    private fun credentials(password: String, username: String = "admin") = buildJsonObject { put("username", username); put("password", password); put("restart", true) }
+
+    @Test fun credentialsUseOneFormAndKeepBothValuesInOneRequest() {
+        val schema = xuiForm("change_credentials", JsonObject(emptyMap()), emptyMap())!!
+        assertEquals(setOf("username", "password", "restart"), schema.properties().keys)
+        assertEquals(setOf("username", "password"), schema.required())
+        val values = credentials("  valid password  ", "new.login")
+        assertNull(NativeForm.validate(schema, values))
+        assertNull(xuiFormError("change_credentials", values))
+        assertEquals(values, xuiParams("change_credentials", values, JsonObject(emptyMap())))
+        assertEquals(JsonPrimitive("••••••"), NativeForm.redact(schema, values)!!.jsonObject["password"])
+    }
+
+    @Test fun passwordRulesMatchUnicodeLengthAndBcryptByteLimit() {
+        for (password in listOf("short", "1234567\n", "a".repeat(73), "я".repeat(37), "😀".repeat(19), "😀".repeat(4))) {
+            assertNotNull(password, xuiFormError("change_credentials", credentials(password)))
+        }
+        for (password in listOf("a".repeat(72), "я".repeat(36), "😀".repeat(18), "😀".repeat(8))) {
+            assertNull(password, xuiFormError("change_credentials", credentials(password)))
+        }
+        assertNotNull(xuiFormError("change_credentials", credentials("good password", "ab")))
+        assertNotNull(xuiFormError("change_credentials", credentials("good password", "bad:name")))
+    }
     private val state = Json.parseToJsonElement("""{"port":2053,"cert":{"panel_engine":"certbot","domains":{"example.org":{},"ip":{}},"certbot_domains":["example.org","another.org"]}}""").jsonObject
     @Test fun sameDomainInTwoEnginesRemainsTwoChoices() {
         val options = xuiCertificates(state)

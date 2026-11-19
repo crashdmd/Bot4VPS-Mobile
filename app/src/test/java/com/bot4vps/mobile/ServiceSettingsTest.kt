@@ -20,13 +20,33 @@ class ServiceSettingsTest {
 
     @Test fun installationFiltersIncludeUnavailableInstalledServers() {
         val installed = ServiceServer("1", "VPN", "10.0.0.1", "Home", false, false, obj("""{"installed":true}"""))
-        val absent = ServiceServer("2", "New", "10.0.0.2", "Work")
+        val absent = ServiceServer("2", "New", "10.0.0.2", "Work", status = obj("""{"installed":false}"""))
         val classic = installed.copy(id = "3", status = obj("""{"installed":true,"needs_migration":true}"""))
         val rows = listOf(installed, absent, classic)
         assertEquals(listOf(installed, classic), filterServiceServers(rows, InstallationFilter.INSTALLED, " vpn ", "Home"))
         assertEquals(listOf(absent), filterServiceServers(rows, InstallationFilter.ABSENT, "", null))
         assertEquals(listOf(classic), filterServiceServers(rows, InstallationFilter.CLASSIC, "", null))
         assertEquals(listOf(installed, classic), filterServiceServers(rows, InstallationFilter.BLOCKED, "", null))
+    }
+
+    @Test fun unknownChecksCannotOfferInstallationOrMatchAbsentFilter() {
+        val states = listOf("""{"installed":null}""", """{"installed":null,"needs_migration":true}""", """{}""", """{"installed":false,"error":"SSH timeout"}""", """{"installed":true,"error":"SSH timeout"}""")
+        val unknown = states.mapIndexed { index, value -> ServiceServer("$index", "Server", "host", status = obj(value)) }
+        assertTrue(unknown.all { it.unknown && !it.installed && it.installation == null })
+        assertTrue(filterServiceServers(unknown, InstallationFilter.ABSENT, "", null).isEmpty())
+        assertTrue(filterServiceServers(unknown, InstallationFilter.INSTALLED, "", null).isEmpty())
+        assertEquals(unknown, filterServiceServers(unknown, InstallationFilter.ALL, "", null))
+        assertEquals("SSH timeout", unknown.last().checkError)
+    }
+
+    @Test fun successfulCommandsAndManualChecksDescribeSyncFailureWithoutRepeatingCommand() {
+        val failed = obj("""{"ok":true,"sync_ok":false,"sync_error":"SSH timeout"}""")
+        assertTrue(serviceSyncWarning(failed)!!.contains("Действие выполнено"))
+        assertTrue(serviceSyncWarning(failed)!!.contains("повторять команду не требуется"))
+        for (status in listOf("""{"installed":null}""", """{"installed":true,"error":"permission denied"}""")) {
+            assertTrue(serviceSyncWarning(obj("""{"ok":true,"status":$status}"""), true)!!.contains("Повторите проверку"))
+        }
+        assertNull(serviceSyncWarning(obj("""{"ok":true,"status":{"installed":false}}"""), true))
     }
 
     @Test fun disabledMonitoringAndCategoryUseDifferentConfigurationKeys() {

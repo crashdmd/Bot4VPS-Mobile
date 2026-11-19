@@ -120,9 +120,13 @@ fun ServicesScreen(onServer: (ServiceKind, String) -> Unit, onFiles: () -> Unit,
                                 Icon(Icons.Default.ChevronRight, "Открыть")
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                StatusBadge(if (server.blocked) server.blockReason else if (server.classic) "Нужна миграция" else if (server.installed) "Установлен" else "Не установлен",
-                                    if (server.blocked) StatusTone.BAD else if (server.classic) StatusTone.WARNING else if (server.installed) StatusTone.GOOD else StatusTone.NEUTRAL)
+                                StatusBadge(if (server.unknown) "Не удалось проверить" else if (server.blocked) server.blockReason else if (server.classic) "Нужна миграция" else if (server.installed) "Установлен" else "Не установлен",
+                                    if (server.unknown) StatusTone.WARNING else if (server.blocked) StatusTone.BAD else if (server.classic) StatusTone.WARNING else if (server.installed) StatusTone.GOOD else StatusTone.NEUTRAL)
                                 server.status.text("version")?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                            }
+                            if (server.unknown) {
+                                Text(server.checkError, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                                TextButton(onClick = { viewModel.check(server.id) }, enabled = !state.loading) { Text("Повторить проверку") }
                             }
                             if (server.installed && !server.blocked) {
                                 val stats = server.status["stats"] as? kotlinx.serialization.json.JsonObject

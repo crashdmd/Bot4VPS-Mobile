@@ -84,9 +84,10 @@ class ServerChecksPresentationTest {
 
     @Test fun servicesStillFilterInstallationAcrossAllGroups() {
         val installed = ServiceServer("a", "A", "1", group = "Home", status = buildJsonObject { put("installed", true) })
-        val absent = ServiceServer("b", "B", "2", group = "Work")
-        val state = ServicesState(rows = listOf(installed, absent))
-        assertEquals(listOf(installed, absent), state.filtered)
+        val absent = ServiceServer("b", "B", "2", group = "Work", status = buildJsonObject { put("installed", false) })
+        val unknown = ServiceServer("c", "C", "3", group = "Home")
+        val state = ServicesState(rows = listOf(installed, absent, unknown))
+        assertEquals(listOf(installed, absent, unknown), state.filtered)
         assertEquals(listOf(installed), state.copy(filter = InstallationFilter.INSTALLED).filtered)
         assertEquals(listOf(absent), state.copy(filter = InstallationFilter.ABSENT).filtered)
         assertEquals(listOf(absent), state.copy(search = "Work").filtered)

@@ -22,7 +22,7 @@ data class NativeControlState(
     val fields: Map<String, JsonElement> = emptyMap(), val body: JsonElement? = null,
     val uploads: Map<String, Upload> = emptyMap(), val choices: Map<String, List<Pair<String, String>>> = emptyMap(),
     val result: JsonElement? = null, val busy: Boolean = false, val loading: Boolean = true,
-    val error: String? = null, val notice: String? = null, val preparedRestoreId: String? = null,
+    val error: String? = null, val notice: String? = null, val uploadConflict: Boolean = false, val taskUnavailable: Boolean = false, val preparedRestoreId: String? = null,
     val selectedView: String = "", val lockedFields: Set<String> = emptySet(), val restoreOperationId: String? = null, val prefillFailed: Boolean = false, val canPrevious: Boolean=false, val connection: PanelConnection? = null, val targetReady: Boolean = false, val connectionFinished: Boolean = false
 )
 
@@ -208,8 +208,18 @@ class NativeControlViewModel @Inject constructor(
     }
     fun selectUpload(name: String, uri: Uri) {
         if (_state.value.busy || _state.value.loading) return
-        try { _state.update { it.copy(uploads = it.uploads + (name to client.upload(uri)), error = null) } }
+        try {
+            val upload = client.upload(uri)
+            _state.update { it.copy(uploads = it.uploads + (name to upload), error = null, uploadConflict = false,
+                fields = if (it.operation?.path == "/api/files/upload") it.fields + ("name" to JsonPrimitive(upload.filename)) else it.fields) }
+        }
         catch (e: Exception) { _state.update { it.copy(error = errorText(e)) } }
+    }
+    fun uploadWithNewName() {
+        val s = _state.value
+        if (s.busy || !s.uploadConflict) return
+        _state.update { it.copy(uploadConflict = false, fields = it.fields + ("name" to JsonPrimitive("")),
+            notice = "Введите другое имя ключа и загрузите выбранный файл.") }
     }
 
     fun formSchema(): JsonObject? {
@@ -253,6 +263,10 @@ class NativeControlViewModel @Inject constructor(
             }
         }
         op.body?.let { schema -> NativeForm.validate(schema, s.body)?.let { error -> _state.update { it.copy(error = error) }; return false } }
+        if (op.path.endsWith("/action/change_credentials")) {
+            val params = (s.body as? JsonObject)?.get("params") as? JsonObject ?: JsonObject(emptyMap())
+            xuiFormError("change_credentials", params)?.let { error -> _state.update { it.copy(error = error) }; return false }
+        }
         return true
     }
 
@@ -343,7 +357,19 @@ class NativeControlViewModel @Inject constructor(
                         watchConnection(pending)
                         return@launch
                     }
-                    val body = if (op.id == "POST /api/servers") serverCreatePayload(s.body as? JsonObject ?: JsonObject(emptyMap())) else s.body
+                    if (op.method != "GET" && op.path.startsWith("/api/services/") && !op.path.endsWith("/sync")) {
+                        val selected = (s.fields["server_id"] as? JsonPrimitive)?.contentOrNull ?: serverId
+                        if (selected != null) {
+                            val kind = op.path.split('/').getOrNull(3).orEmpty()
+                            val state = client.checkedObject("GET", "/api/services/$kind/${encodeSegment(selected)}/state")["state"] as? JsonObject
+                            require(state != null && serviceStateKnown(state)) { state?.text("error") ?: "Не удалось проверить состояние сервиса. Повторите проверку перед действием." }
+                        }
+                    }
+                    val body = if (op.id == "POST /api/servers") serverCreatePayload(s.body as? JsonObject ?: JsonObject(emptyMap()))
+                        else if (op.path.endsWith("/action/change_credentials")) {
+                            val original = s.body as? JsonObject ?: JsonObject(emptyMap())
+                            JsonObject(original + ("params" to xuiParams("change_credentials", original["params"] as? JsonObject ?: JsonObject(emptyMap()), JsonObject(emptyMap()))))
+                        } else s.body
                     val result = client.request(op.method, path, query, body, form, s.uploads)
                     _state.update { it.copy(result = result) }
                     val failure = (result as? JsonObject)?.let { obj -> (obj["ok"] as? JsonPrimitive)?.booleanOrNull == false || (obj["success"] as? JsonPrimitive)?.booleanOrNull == false }
@@ -351,10 +377,18 @@ class NativeControlViewModel @Inject constructor(
                     val prepared = if (op.body?.text("model") == "RestoreBody") waitForRestore(result, query) else null
                     val queued = (result as? JsonObject)?.let { it["operation"] != null || it["task"] != null } == true
                     _state.update { it.copy(busy = false, preparedRestoreId = prepared,
-                        notice = if (op.method == "GET") null else if (prepared != null) "План подготовлен. Проверьте результат перед восстановлением." else if (queued) "Операция поставлена в очередь." else "Операция выполнена") }
+                        notice = if (op.method == "GET") null else if (prepared != null) "План подготовлен. Проверьте результат перед восстановлением." else if (queued) "Операция поставлена в очередь."
+                        else (result as? JsonObject)?.let { obj -> serviceSyncWarning(obj, manual = op.path.startsWith("/api/services/") && op.path.endsWith("/sync")) } ?: "Операция выполнена",
+                        taskUnavailable = false, uploadConflict = false) }
                 }
             } catch (e: CancellationException) { throw e }
-            catch (e: Exception) { _state.update { it.copy(busy = false, error = errorText(e)) } }
+            catch (e: Exception) { _state.update { current ->
+                val missing = e is ApiError && e.status == 404 && current.operation?.path == "/api/tasks/{task_id}"
+                current.copy(busy = false, error = if (missing) TASK_MISSING_MESSAGE else errorText(e),
+                    result = if (missing) (current.result as? JsonObject)?.let { JsonObject(it + ("status" to JsonPrimitive("Итог неизвестен"))) } else current.result,
+                    taskUnavailable = missing || current.taskUnavailable,
+                    uploadConflict = e is ApiError && e.status == 409 && current.operation?.path == "/api/files/upload" && current.fields["root"] == JsonPrimitive("keys"))
+            } }
         }
     }
 
@@ -596,7 +630,7 @@ class NativeControlViewModel @Inject constructor(
 
     suspend fun observe() {
         if(_state.value.operation?.path == "/api/tasks/{task_id}") {
-            while(true) { if(!_state.value.busy && !_state.value.loading) execute(); delay(2000) }
+            while(true) { if(!_state.value.busy && !_state.value.loading && !_state.value.taskUnavailable) execute(); delay(2000) }
         }
         realtime.events.collect {
             val s = _state.value; val op = s.operation

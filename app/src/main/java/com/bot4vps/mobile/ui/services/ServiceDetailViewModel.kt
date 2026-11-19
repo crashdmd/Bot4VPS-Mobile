@@ -46,7 +46,10 @@ class ServiceDetailViewModel @Inject constructor(saved: SavedStateHandle, privat
             _state.update { it.copy(loading = !background || it.detail == null) }
             try { val detail = repo.detail(kind, serverId, tab); _state.update { it.copy(detail = detail, loading = false, error = null) } }
             catch (e: CancellationException) { throw e }
-            catch (e: Exception) { _state.update { it.copy(loading = false, error = errorText(e)) } }
+            catch (e: Exception) { _state.update {
+                val unknown = buildJsonObject { put("installed", JsonNull); put("error", errorText(e)) }
+                it.copy(detail = it.detail?.let { old -> ServiceDetail(old.server.copy(status = unknown), unknown) }, loading = false, error = errorText(e))
+            } }
         }
     }
     fun tab(value: String) { if (_state.value.busy || _state.value.editor != null) return; request?.cancel(); _state.update { it.copy(tab = value, search = "", recordFilter = "all") }; refresh() }
@@ -55,7 +58,8 @@ class ServiceDetailViewModel @Inject constructor(saved: SavedStateHandle, privat
     fun dismissEditor() { if (!_state.value.busy) _state.update { it.copy(editor = null, error = null) } }
 
     fun edit(id: String, title: String, values: Map<String, JsonElement> = emptyMap(), locked: Set<String> = emptySet()) {
-        if (_state.value.busy) return
+        if (_state.value.busy || _state.value.loading || request?.isActive == true) return
+        if (_state.value.detail?.state?.let(::serviceStateKnown) != true) { _state.update { it.copy(error = "Не удалось проверить состояние сервиса. Повторите проверку перед действием.") }; return }
         if (_state.value.detail?.server?.blocked == true) { _state.update { it.copy(error = it.detail?.server?.blockReason) }; return }
         val op = contract?.operations?.find { it.id == id } ?: run { _state.update { it.copy(error = "Настройки действия ещё загружаются. Повторите попытку.") }; return }
         val wrap = op.body?.properties()?.containsKey("params") == true
@@ -87,11 +91,13 @@ class ServiceDetailViewModel @Inject constructor(saved: SavedStateHandle, privat
             try {
                 val server = repo.servers(kind).find { it.id == serverId } ?: error("Сервер не найден")
                 require(!server.blocked) { server.blockReason }
+                val verified = repo.detail(kind, serverId, "overview").state
+                require(serviceStateKnown(verified)) { verified.text("error") ?: "Не удалось проверить состояние сервиса. Повторите проверку." }
                 var path = editor.operation.path.replace("{server_id}", encodeSegment(serverId))
                 editor.values.forEach { (key, value) -> path = path.replace("{$key}", encodeSegment(value.jsonPrimitive.content)) }
                 require(!path.contains('{')) { "Не выбран объект действия" }
                 val params = if (editor.xuiAction != null) {
-                    val current = if (editor.xuiAction in setOf("cert_renew", "cert_remove")) repo.detail(kind, serverId, "overview").state else s.detail?.state ?: JsonObject(emptyMap())
+                    val current = verified
                     JsonObject(xuiParams(editor.xuiAction, values, current) + editor.values.filterKeys { it in editor.locked } +
                         if (editor.xuiAction == "cert_issue_ip") mapOf("set_panel" to JsonPrimitive(true)) else emptyMap())
                 } else values
@@ -101,13 +107,13 @@ class ServiceDetailViewModel @Inject constructor(saved: SavedStateHandle, privat
                 val taskId = brief?.text("id") ?: response.text("task_id") ?: response.text("id")
                 val accepted = taskId?.let { TaskSummary(id = it, name = brief?.text("name") ?: editor.title, status = brief?.text("status") ?: "queued") }
                 _state.update { it.copy(busy = false, editor = null, task = accepted ?: it.task,
-                    notice = if (taskId != null) "Задача принята. Выполнение отображается ниже." else if (response["sync_ok"] == JsonPrimitive(false)) "Действие выполнено, но состояние не обновлено: ${response.text("sync_error")}" else "Изменения применены") }
+                    notice = if (taskId != null) "Задача принята. Выполнение отображается ниже." else serviceSyncWarning(response) ?: "Изменения применены") }
                 request = null
                 refresh()
                 if (taskId != null) {
                     try { val fresh = tasks.task(taskId); _state.update { if (it.task?.id == taskId) it.copy(task = fresh) else it } }
                     catch (e: CancellationException) { throw e }
-                    catch (e: Exception) { _state.update { it.copy(error = "Задача принята, но её состояние пока недоступно: ${errorText(e)}") } }
+                    catch (e: Exception) { taskFailure(taskId, e) }
                 }
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) { _state.update { it.copy(busy = false, error = errorText(e)) } }
@@ -115,8 +121,9 @@ class ServiceDetailViewModel @Inject constructor(saved: SavedStateHandle, privat
     }
 
     fun dismissSite() { _state.update { it.copy(site = null) } }
+    fun dismissTask() { _state.update { it.copy(task = null) } }
     fun openSite() {
-        if (_state.value.busy || _state.value.siteLoading) return
+        if (_state.value.busy || _state.value.siteLoading || _state.value.detail?.state?.let(::serviceStateKnown) != true) return
         request?.cancel()
         _state.update { it.copy(siteLoading = true, loading = false, error = null) }
         viewModelScope.launch {
@@ -141,12 +148,20 @@ class ServiceDetailViewModel @Inject constructor(saved: SavedStateHandle, privat
 
     suspend fun poll() {
         val task = _state.value.task ?: return
-        if (task.isDone) return
+        if (!task.canPoll) return
         try {
-            val fresh = tasks.task(task.id)
-            _state.update { it.copy(task = fresh) }
+            val fresh = tasks.observe(task)
+            _state.update { if (it.task?.id == task.id) it.copy(task = fresh) else it }
             if (fresh.isDone) refresh()
         } catch (e: CancellationException) { throw e }
-        catch (e: Exception) { _state.update { it.copy(error = errorText(e)) } }
+        catch (e: Exception) { taskFailure(task.id, e) }
+    }
+
+    private fun taskFailure(id: String, error: Exception) {
+        _state.update { current ->
+            if (current.task?.id != id) current
+            else if (taskNotFound(error)) current.copy(task = current.task.missing(), error = null)
+            else current.copy(error = "Состояние задачи пока недоступно: ${errorText(error)}")
+        }
     }
 }

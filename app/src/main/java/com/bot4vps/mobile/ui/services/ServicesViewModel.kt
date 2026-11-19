@@ -64,6 +64,20 @@ class ServicesViewModel @Inject constructor(private val saved: SavedStateHandle,
         viewModelScope.launch { prefs.setServiceSort(kind, byName) }
     }
     fun refresh() { fetch(false) }
+    fun check(id: String) {
+        val kind = _state.value.selected ?: return
+        if (request?.isActive == true) return
+        val current = generation
+        request = viewModelScope.launch {
+            _state.update { it.copy(loading = true) }
+            try {
+                val status = repo.check(kind, id)
+                if (current == generation) _state.update { it.copy(rows = it.rows.map { row -> if (row.id == id) row.copy(status = status) else row }) }
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) { if (current == generation) _state.update { it.copy(error = errorText(e)) } }
+            finally { if (current == generation) _state.update { it.copy(loading = false) } }
+        }
+    }
     private fun fetch(background: Boolean) {
         val kind = _state.value.selected ?: return
         if (kind == ServiceKind.SCRIPTS) return

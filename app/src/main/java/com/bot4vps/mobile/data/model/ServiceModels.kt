@@ -18,11 +18,13 @@ data class ServiceServer(
     val id: String, val name: String, val host: String, val group: String? = null,
     val online: Boolean? = null, val portOk: Boolean? = null, val status: JsonObject = JsonObject(emptyMap()), val hostIp: String? = null
 ) {
-    val installed get() = status.flag("installed") || classic
-    val classic get() = status.flag("needs_migration")
+    val unknown get() = !serviceStateKnown(status)
+    val checkError get() = status.text("error")?.takeIf(String::isNotBlank) ?: "Панель не подтвердила состояние сервиса"
+    val installed get() = !unknown && (status.flag("installed") || classic)
+    val classic get() = !unknown && status.flag("needs_migration")
     val blocked get() = portOk == false || portOk == null && online == false
     val blockReason get() = if (online == false) "Сервер офлайн" else "SSH-порт недоступен"
-    val installation get() = when { classic -> InstallationFilter.CLASSIC; installed -> InstallationFilter.INSTALLED; else -> InstallationFilter.ABSENT }
+    val installation get() = when { unknown -> null; classic -> InstallationFilter.CLASSIC; installed -> InstallationFilter.INSTALLED; else -> InstallationFilter.ABSENT }
     companion object {
         fun parse(row: JsonObject, group: String? = null): ServiceServer? {
             val id = row.text("id") ?: return null
@@ -37,13 +39,24 @@ fun filterServiceServers(rows: List<ServiceServer>, filter: InstallationFilter, 
     rows.filter { row -> (when (filter) {
         InstallationFilter.ALL -> true
         InstallationFilter.INSTALLED -> row.installed
-        InstallationFilter.ABSENT -> !row.installed
+        InstallationFilter.ABSENT -> row.installation == InstallationFilter.ABSENT
         InstallationFilter.CLASSIC -> row.classic
         InstallationFilter.BLOCKED -> row.blocked
     }) &&
         (group == null || row.group == group) && (search.isBlank() || listOf(row.name, row.host, row.group.orEmpty()).any { it.contains(search.trim(), true) }) }
 
 fun JsonObject.objects(key: String): List<JsonObject> = (get(key) as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }
+fun serviceStateKnown(state: JsonObject): Boolean = state.text("error").isNullOrBlank() &&
+    (state["installed"] as? JsonPrimitive)?.booleanOrNull != null
+
+fun serviceSyncWarning(response: JsonObject, manual: Boolean = false): String? {
+    val status = response["status"] as? JsonObject
+    if (response["sync_ok"] != JsonPrimitive(false) && (status == null || serviceStateKnown(status))) return null
+    val reason = response.text("sync_error")?.takeIf(String::isNotBlank)
+        ?: status?.text("error")?.takeIf(String::isNotBlank) ?: "Не удалось подтвердить актуальное состояние сервиса"
+    return if (manual) "Не удалось проверить состояние: $reason. Повторите проверку."
+        else "Действие выполнено, но проверить состояние не удалось: $reason. Обновите состояние сервиса; повторять команду не требуется."
+}
 fun JsonObject.number(key: String): Double? = (get(key) as? JsonPrimitive)?.doubleOrNull
 fun serviceActive(state: JsonObject): Boolean = when (val active = state["active"] as? JsonPrimitive) {
     null -> false

@@ -18,6 +18,8 @@ data class ServiceDetail(val server: ServiceServer, val state: JsonObject, val i
 
 @Singleton
 class ServiceRepository @Inject constructor(private val panel: NativePanelClient) {
+    suspend fun check(kind: ServiceKind, id: String): JsonObject = panel.checkedObject("POST",
+        "/api/services/${kind.id}/${encodeSegment(id)}/sync")["status"] as? JsonObject ?: error("Панель не вернула состояние сервиса")
     suspend fun servers(kind: ServiceKind): List<ServiceServer> = coroutineScope {
         val status = async { panel.checkedObject("GET", "/api/services/${kind.id}/status") }
         val serverGroups = async { try { panel.checkedObject("GET", "/api/servers").objects("servers").associate { it.text("id").orEmpty() to it.text("group") } }
@@ -31,11 +33,10 @@ class ServiceRepository @Inject constructor(private val panel: NativePanelClient
         if (server.blocked) return ServiceDetail(server, server.status)
         val base = "/api/services/${kind.id}/${encodeSegment(id)}"
         val state = panel.checkedObject("GET", "$base/state")["state"] as? JsonObject ?: error("Нет состояния сервиса")
-        state.text("error")?.takeIf(String::isNotBlank)?.let { error(it) }
-        if (!state.flag("installed")) return ServiceDetail(server, state)
+        if (!serviceStateKnown(state) || !state.flag("installed")) return ServiceDetail(server.copy(status = state), state)
         val images = if (kind == ServiceKind.DOCKER && tab == "images") panel.checkedObject("GET", "$base/images").objects("images") else emptyList()
         val stacks = if (kind == ServiceKind.DOCKER && tab == "compose") panel.checkedObject("GET", "$base/stacks") else JsonObject(emptyMap())
-        return ServiceDetail(server, state, images, stacks)
+        return ServiceDetail(server.copy(status = state), state, images, stacks)
     }
 
     suspend fun action(kind: ServiceKind, id: String, suffix: String, body: JsonObject? = null): JsonObject {

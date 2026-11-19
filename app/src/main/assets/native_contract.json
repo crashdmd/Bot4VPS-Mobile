@@ -1,5 +1,5 @@
 {
-  "version": "7.1.0",
+  "version": "7.2.0",
   "sections": {
     "dashboard": "Обзор",
     "servers": "Серверы",
@@ -2993,6 +2993,14 @@
           "location": "form",
           "title": "Файл",
           "required": true
+        },
+        {
+          "type": "string",
+          "name": "name",
+          "location": "query",
+          "title": "Имя файла на панели",
+          "required": false,
+          "default": ""
         }
       ],
       "body": null,
@@ -8559,6 +8567,19 @@
                 "type": "boolean",
                 "title": "Адрес прослушивания",
                 "default": false
+              },
+              "post_issue": {
+                "type": "object",
+                "properties": {
+                  "monitor_ssl": {
+                    "type": "boolean",
+                    "title": "Monitor ssl"
+                  }
+                },
+                "required": [],
+                "title": "После выпуска сертификата",
+                "nullable": true,
+                "hidden": true
               }
             },
             "required": [
@@ -8729,11 +8750,11 @@
       "download": false
     },
     {
-      "id": "POST /api/services/3x-ui/{server_id}/action/change_username",
+      "id": "POST /api/services/3x-ui/{server_id}/action/change_credentials",
       "method": "POST",
-      "path": "/api/services/3x-ui/{server_id}/action/change_username",
+      "path": "/api/services/3x-ui/{server_id}/action/change_credentials",
       "section": "xui",
-      "title": "Change · Логин",
+      "title": "Сменить логин и пароль",
       "group": "Операции",
       "fields": [
         {
@@ -8752,51 +8773,15 @@
             "properties": {
               "username": {
                 "type": "string",
-                "title": "Логин"
+                "title": "Логин",
+                "minLength": 3,
+                "maxLength": 32
               },
-              "restart": {
-                "type": "boolean",
-                "title": "Политика перезапуска",
-                "default": true
-              }
-            },
-            "required": [
-              "username"
-            ],
-            "title": "Параметры"
-          }
-        },
-        "required": []
-      },
-      "destructive": false,
-      "download": false
-    },
-    {
-      "id": "POST /api/services/3x-ui/{server_id}/action/change_password",
-      "method": "POST",
-      "path": "/api/services/3x-ui/{server_id}/action/change_password",
-      "section": "xui",
-      "title": "Change · Пароль",
-      "group": "Операции",
-      "fields": [
-        {
-          "type": "string",
-          "name": "server_id",
-          "location": "path",
-          "title": "Сервер",
-          "required": true
-        }
-      ],
-      "body": {
-        "type": "object",
-        "properties": {
-          "params": {
-            "type": "object",
-            "properties": {
               "password": {
                 "type": "string",
                 "title": "Пароль",
-                "secret": true
+                "secret": true,
+                "maxUtf8Bytes": 72
               },
               "restart": {
                 "type": "boolean",
@@ -8805,6 +8790,7 @@
               }
             },
             "required": [
+              "username",
               "password"
             ],
             "title": "Параметры"
@@ -9039,18 +9025,31 @@
           "params": {
             "type": "object",
             "properties": {
+              "post_issue": {
+                "type": "object",
+                "properties": {
+                  "monitor_ssl": {
+                    "type": "boolean",
+                    "title": "Monitor ssl"
+                  }
+                },
+                "required": [],
+                "title": "После выпуска сертификата",
+                "nullable": true,
+                "hidden": true
+              },
               "domain": {
                 "type": "string",
                 "title": "Домен"
-              },
-              "port": {
-                "type": "string",
-                "title": "Порт"
               },
               "set_panel": {
                 "type": "boolean",
                 "title": "Set panel",
                 "default": true
+              },
+              "port": {
+                "type": "string",
+                "title": "Порт"
               },
               "engine": {
                 "type": "string",
@@ -9090,9 +9089,27 @@
           "params": {
             "type": "object",
             "properties": {
+              "post_issue": {
+                "type": "object",
+                "properties": {
+                  "monitor_ssl": {
+                    "type": "boolean",
+                    "title": "Monitor ssl"
+                  }
+                },
+                "required": [],
+                "title": "После выпуска сертификата",
+                "nullable": true,
+                "hidden": true
+              },
               "ip": {
                 "type": "string",
                 "title": "IP-адрес"
+              },
+              "set_panel": {
+                "type": "boolean",
+                "title": "Set panel",
+                "default": true
               },
               "ipv6": {
                 "type": "string",
@@ -9101,11 +9118,6 @@
               "port": {
                 "type": "string",
                 "title": "Порт"
-              },
-              "set_panel": {
-                "type": "boolean",
-                "title": "Set panel",
-                "default": true
               }
             },
             "additionalProperties": {

@@ -39,8 +39,9 @@ fun auditResultLabel(result: String): String = when(result) {
 
 fun auditActor(record: JsonObject, details: Boolean = false): String {
     val actor = record["actor"] as? JsonObject ?: return "Система"
-    val type = when(val raw = actor.text("type")) { "system" -> "Система"; "web" -> "Веб"; "telegram" -> "Telegram"; else -> raw ?: "Система" }
-    return type + actor.text("id")?.let { ": $it" }.orEmpty() + actor.text("role")?.let { " · $it" }.orEmpty() +
+    val type = when(val raw = actor.text("type")) { "system" -> "Система"; "web" -> "Веб"; "telegram" -> "Telegram"; "phone" -> "Телефон"; else -> raw ?: "Система" }
+    val identity = if (actor.text("type") == "phone") actor.text("name")?.takeIf(String::isNotBlank) ?: actor.text("id") else actor.text("id")
+    return type + identity?.let { ": $it" }.orEmpty() + actor.text("role")?.let { " · $it" }.orEmpty() +
         (if(details) actor.text("ip")?.let { " · $it" }.orEmpty() else "")
 }
 

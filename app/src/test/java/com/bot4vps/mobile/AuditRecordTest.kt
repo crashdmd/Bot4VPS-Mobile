@@ -6,6 +6,11 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AuditRecordTest {
+    @Test fun phoneActorUsesServerNameWithIdentifierFallback() {
+        fun actor(fields: String) = Json.parseToJsonElement("""{"actor":{"type":"phone","id":"device-42",$fields}}""").jsonObject
+        assertEquals("Телефон: Мой телефон", auditActor(actor(""""name":"Мой телефон"""")))
+        assertEquals("Телефон: device-42", auditActor(actor(""""name":""""")))
+    }
     @Test fun actorAndServerAreReadFromNestedObjects() {
         val data=Json.parseToJsonElement("""{"started_at":100,"ts":90,"actor":{"type":"web","id":"user","role":"admin","ip":"127.0.0.1"},"server":{"id":"deleted","name":"Удалённый сервер"}}""").jsonObject
         assertEquals(100L,data.auditStart())

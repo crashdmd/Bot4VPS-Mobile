@@ -22,6 +22,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import com.bot4vps.mobile.data.model.TaskSummary
+import com.bot4vps.mobile.data.model.TASK_MISSING_MESSAGE
 import com.bot4vps.mobile.ui.components.*
 import com.bot4vps.mobile.ui.services.taskStatusLabel
 import kotlinx.coroutines.delay
@@ -89,13 +90,17 @@ private fun TaskDetail(task: TaskSummary, busy: Boolean, error: String?, onBack:
         Refreshable(busy, onRetry, Modifier.fillMaxSize().padding(padding)) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = refreshArrangement(12.dp)) {
             error?.let { item { ErrorCard(it, onRetry) } }
+            if (task.unavailable) item { PanelCard {
+                Text(TASK_MISSING_MESSAGE)
+                TextButton(onClick = onBack) { Text("Открыть список задач") }
+            } }
             if (busy) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
             item { PanelCard {
                 StatusBadge(taskStatusLabel(task.status), taskTone(task))
                 InfoRow("Сервер", task.serverName ?: task.serverId ?: "—")
                 InfoRow("Начало", displayTime(task.startedAt ?: task.createdAt))
                 InfoRow("Длительность", task.duration ?: "—")
-                if (!task.isDone) PanelSecondaryButton(onClick = onCancel, enabled = !busy) { Text("Отменить задачу") }
+                if (task.canPoll) PanelSecondaryButton(onClick = onCancel, enabled = !busy) { Text("Отменить задачу") }
             } }
             task.error?.let { item { ErrorCard(it) } }
             item { Text("Вывод", style = MaterialTheme.typography.titleMedium) }

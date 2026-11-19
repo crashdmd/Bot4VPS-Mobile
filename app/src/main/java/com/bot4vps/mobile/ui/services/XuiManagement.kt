@@ -50,7 +50,7 @@ fun XuiManagement(data: JsonObject, vm: ServiceDetailViewModel) {
             }
         }
         PanelCard("Аккаунт панели") {
-            listOf("change_username" to "Сменить логин", "change_password" to "Сменить пароль", "change_port" to "Изменить порт", "change_path" to "Изменить путь").forEach { (action, label) ->
+            listOf("change_credentials" to "Сменить логин и пароль", "change_port" to "Изменить порт", "change_path" to "Изменить путь").forEach { (action, label) ->
                 PanelActionLink(label, "Настройки доступа к 3x-ui", Icons.Default.ManageAccounts,
                     { vm.action(action, label, quick = true, locked = emptySet()) }, enabled = !state.busy)
             }
