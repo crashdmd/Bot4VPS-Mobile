@@ -128,7 +128,7 @@ fun MetricsScreen(onBack: () -> Unit, onAdvanced: (String?) -> Unit = {}, onAudi
     var calendar by remember { mutableStateOf<String?>(null) }
     calendar?.let { boundary ->
         val date = rememberDatePickerState()
-        DatePickerDialog(onDismissRequest = { calendar = null },
+        DatePickerDialog(properties = androidx.compose.ui.window.DialogProperties(dismissOnClickOutside = false), onDismissRequest = { calendar = null },
             confirmButton = { TextButton(enabled = date.selectedDateMillis != null, onClick = {
                 date.selectedDateMillis?.let { millis ->
                     val day = Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate()

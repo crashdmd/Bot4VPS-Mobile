@@ -173,6 +173,30 @@ class AuthRepository @Inject constructor(
         }
     }
 
+    suspend fun removeLocalConnection(profile: com.bot4vps.mobile.data.model.PanelProfile) = connectionLock.withLock {
+        val current = prefs.profiles.first().firstOrNull { it.url == profile.url && it.deviceId == profile.deviceId }
+            ?: error("Подключение уже изменилось. Откройте список заново.")
+        val pending = withContext(Dispatchers.IO) { pendingMigration() }
+        val device = withContext(Dispatchers.IO) { mobile.pairedDevices().firstOrNull { it.first == current.url }?.second }
+        check(device == null || device.id == current.deviceId) { "Привязка этого адреса изменилась. Откройте список заново." }
+        val origins = mutableSetOf(current.url)
+        if (pending != null && pending.deviceId == current.deviceId && current.url in listOf(pending.sourceOrigin, pending.origin, pending.profileOrigin)) {
+            origins.addAll(listOf(pending.sourceOrigin, pending.origin, pending.profileOrigin))
+        }
+        // Persist local intent first: an interrupted cleanup must not let
+        // profile discovery resurrect this connection from retained keys.
+        prefs.markProfileDisconnected(current.url)
+        val seed = appLock.sensitiveSeedId
+        withContext(Dispatchers.IO) {
+            secrets.removeConnectionMigrations(current.deviceId, origins)
+            for (origin in origins) {
+                mobile.forgetIfDevice(PanelUrl.endpoint(origin, "/api/me"), current.deviceId) { address -> operationKeys.remove(address, seed) }
+                cookies.remove(origin)
+            }
+        }
+        dropConnection(current.url, current.deviceId, revoked = false)
+    }
+
     private suspend fun dropConnection(origin: String, expectedId: String, revoked: Boolean, roleMessage: String? = null) {
         val removed = prefs.removeProfile(origin, expectedId)
         if (removed.removed != null) {

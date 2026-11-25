@@ -23,7 +23,7 @@ data class DashboardState(val system: JsonObject? = null, val summary: JsonObjec
 }
 
 @HiltViewModel
-class DashboardViewModel @Inject constructor(private val panel: NativePanelClient, private val realtime: RealtimeHub, private val servers: ServerRepository) : ViewModel() {
+class DashboardViewModel @Inject constructor(private val panel: NativePanelClient, private val realtime: RealtimeHub, private val servers: ServerRepository, val gateways: GatewayRepository) : ViewModel() {
     private val _state = MutableStateFlow(DashboardState())
     val state = _state.asStateFlow()
     private var request: Job? = null
@@ -127,8 +127,8 @@ class DashboardViewModel @Inject constructor(private val panel: NativePanelClien
     }
 }
 
-/** Same priority and size as the mobile web widget; manual refresh starts a new selection. */
+/** Prioritize servers requiring attention; manual refresh starts a new selection. */
 fun pickDashboardServers(servers: List<ServerSummary>): List<ServerSummary> {
     val (problems, healthy) = servers.partition { it.online != true || !it.sshError.isNullOrBlank() }
-    return (problems.shuffled() + healthy.shuffled()).take(6)
+    return (problems.shuffled() + healthy.shuffled()).take(4)
 }

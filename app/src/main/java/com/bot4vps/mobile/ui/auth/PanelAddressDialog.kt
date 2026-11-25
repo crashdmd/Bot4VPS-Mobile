@@ -34,6 +34,7 @@ fun PanelAddressDialog(onDismiss: () -> Unit, onSaved: () -> Unit, newPanel: Boo
     var error by remember { mutableStateOf<String?>(null) }
     var attempt by remember { mutableStateOf<Job?>(null) }
     var addressChange by remember { mutableStateOf<com.bot4vps.mobile.data.model.MobileConnectionChange?>(null) }
+    var removing by remember { mutableStateOf<com.bot4vps.mobile.data.model.PanelProfile?>(null) }
     val scope = rememberCoroutineScope()
     LaunchedEffect(Unit) { try { viewModel.auth.refreshProfiles() } catch (cancel: CancellationException) { throw cancel } catch (e: Exception) { error = errorText(e) } }
     fun connect(code: String, allowPairing: Boolean = true) {
@@ -62,8 +63,27 @@ fun PanelAddressDialog(onDismiss: () -> Unit, onSaved: () -> Unit, newPanel: Boo
         }
     }
     val changeScanner = rememberQrScanner("Наведите камеру на QR смены Mobile API в веб-панели", { connect(it, allowPairing = false) }, { error = it })
-    LaunchedEffect(page) { if (page == "pair") { manual = false; draft = ""; scanner() } }
     fun cancel() { attempt?.cancel(); onDismiss() }
+    removing?.let { profile ->
+        PanelAlertDialog(onDismissRequest = { if (!busy) removing = null }, title = { Text("Удалить подключение с телефона?") }, text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(profile.name); Text(profile.url)
+                Text("Адрес, привязка и ключи этого подключения будут удалены с телефона. Связь с панелью не требуется. Для подключения заново понадобится новый код привязки.")
+                error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            }
+        }, confirmButton = { TextButton(enabled = !busy, onClick = {
+            busy = true; error = null
+            attempt = scope.launch {
+                try { viewModel.auth.removeLocalConnection(profile); removing = null }
+                catch (cancel: CancellationException) { throw cancel }
+                catch (e: Exception) { error = errorText(e) }
+                finally { busy = false }
+            }
+        }) { Text("Удалить", color = MaterialTheme.colorScheme.error) } }, dismissButton = {
+            TextButton(enabled = !busy, onClick = { removing = null; error = null }) { Text("Отмена") }
+        })
+    }
+    if (removing != null) return
     addressChange?.let { change -> PanelAlertDialog(onDismissRequest = { if (!busy) addressChange = null },
         title = { Text("Подтвердить новый адрес?") }, text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Прежний адрес: ${change.oldUrl}"); Text("Новый адрес: ${change.url}")
@@ -80,18 +100,19 @@ fun PanelAddressDialog(onDismiss: () -> Unit, onSaved: () -> Unit, newPanel: Boo
         }) { Text(if (busy) "Подтверждаем…" else "Подтвердить") } },
         dismissButton = { TextButton(enabled = !busy, onClick = { addressChange = null; error = null }) { Text("Отмена") } }) }
     if (addressChange != null) return
-    PanelAlertDialog(onDismissRequest = ::cancel, title = { Text(when (page) { "pair" -> "Создать связь с сервисом"; "select" -> "Выбрать сервис"; "address", "address_manual" -> "Изменить адрес текущего сервера"; else -> "Подключение" }) },
+    PanelAlertDialog(onDismissRequest = ::cancel, title = { Text(when (page) { "pair" -> "Новое подключение"; "select" -> "Выбрать сервис"; "address", "address_manual" -> "Изменить адрес панели"; else -> "Подключения" }) },
         text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             when (page) {
                 "menu" -> {
                     current?.let { Text("Текущий сервис: $it", style = MaterialTheme.typography.bodySmall) }
-                    ActionRow("Выбрать другой сервис", "Сохранённые подключения", Icons.Default.SwapHoriz, { page = "select" }, enabled = !busy && com.bot4vps.mobile.data.model.hasOtherService(profiles, current))
-                    ActionRow("Изменить адрес текущего сервера", "Подтвердить новые данные Mobile API", Icons.Default.Edit, { page = "address"; error = null },
+                    ActionRow("Выбрать сервис", "Сохранённые подключения; удерживайте строку для удаления", Icons.Default.SwapHoriz, { page = "select" }, enabled = !busy && profiles.isNotEmpty())
+                    ActionRow("Изменить адрес панели", "Новый адрес существующего подключения", Icons.Default.Edit, { page = "address"; error = null },
                         enabled = !busy && profiles.any { com.bot4vps.mobile.data.model.panelProfileOrigin(it.url) == currentOrigin })
-                    ActionRow("Создать связь с сервисом", "Отсканировать QR привязки", Icons.Default.QrCodeScanner, { page = "pair" })
+                    ActionRow("Новое подключение", "Сканировать QR или ввести код привязки", Icons.Default.AddLink, { page = "pair"; manual = false; draft = "" })
                 }
                 "select" -> {
-                    if (profiles.isEmpty()) Text("Нет сохранённых связей. Создайте первую связь по QR.")
+                    if (profiles.isEmpty()) Text("Нет сохранённых подключений. Добавьте панель по QR или коду.")
+                    else Text("Удерживайте строку сервиса, чтобы удалить его подключение с телефона.", style = MaterialTheme.typography.bodySmall)
                     profiles.forEach { profile -> ActionRow(profile.name,
                         if (profile.revoked) "Доступ отозван — создайте новую связь" else if (profile.localDisconnected) "Связь удалена с телефона — создайте новую" else if (com.bot4vps.mobile.data.model.panelProfileOrigin(profile.url) == currentOrigin) "Текущий сервис" else profile.url,
                         if (profile.revoked) Icons.Default.LinkOff else Icons.Default.Link, {
@@ -100,7 +121,7 @@ fun PanelAddressDialog(onDismiss: () -> Unit, onSaved: () -> Unit, newPanel: Boo
                                 catch (e: CancellationException) { throw e } catch (e: Exception) { error = errorText(e) }
                                 finally { busy = false }
                             } }
-                        }, enabled = !busy && !profile.revoked && !profile.localDisconnected) }
+                        }, enabled = !busy, onLongClick = { removing = profile; error = null }) }
                 }
                 "pair" -> {
                     Text("Создайте привязку в Web: Настройки → Мобильное приложение. Отсканируйте QR.")

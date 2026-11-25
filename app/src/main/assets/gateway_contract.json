@@ -1,0 +1,214 @@
+{
+  "version": "7.5.0",
+  "interface": "native-compose",
+  "operations": [
+    {
+      "method": "GET",
+      "path": "/api/gateways/{node_id}/backups"
+    },
+    {
+      "method": "POST",
+      "path": "/api/gateways/{node_id}/backups/create"
+    },
+    {
+      "method": "POST",
+      "path": "/api/gateways/{node_id}/backups/upload"
+    },
+    {
+      "method": "POST",
+      "path": "/api/gateways/{node_id}/backups/plan"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/gateways/{node_id}/backups/plans/{token}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/gateways/{node_id}/backups/apply"
+    },
+    {
+      "method": "GET",
+      "path": "/api/gateways"
+    },
+    {
+      "method": "POST",
+      "path": "/api/gateways/probe"
+    },
+    {
+      "method": "POST",
+      "path": "/api/gateways/bootstrap/{token}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/gateways/manual"
+    },
+    {
+      "method": "GET",
+      "path": "/api/gateways/reserve"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/gateways/reserve"
+    },
+    {
+      "method": "POST",
+      "path": "/api/gateways/{node_id}/bootstrap/finalize"
+    },
+    {
+      "method": "GET",
+      "path": "/api/gateways/catalog/{profile}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/gateways/{node_id}/bundles"
+    },
+    {
+      "method": "GET",
+      "path": "/api/gateways/{node_id}/service-updates"
+    },
+    {
+      "method": "POST",
+      "path": "/api/gateways/{node_id}/integration/plan"
+    },
+    {
+      "method": "POST",
+      "path": "/api/gateways/{node_id}/integration"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/gateways/{node_id}/integration/plans/{token}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/gateways/{node_id}/services/{service}/update-bundle"
+    },
+    {
+      "method": "GET",
+      "path": "/api/gateways/{node_id}/services/{service}/update-plan"
+    },
+    {
+      "method": "POST",
+      "path": "/api/gateways/{node_id}/services/{service}/plan"
+    },
+    {
+      "method": "POST",
+      "path": "/api/gateways/{node_id}/operations"
+    },
+    {
+      "method": "GET",
+      "path": "/api/gateways/status"
+    },
+    {
+      "method": "GET",
+      "path": "/api/gateways/{node_id}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/gateways/{node_id}/traffic"
+    },
+    {
+      "method": "GET",
+      "path": "/api/gateways/{node_id}/network"
+    },
+    {
+      "method": "GET",
+      "path": "/api/gateways/{node_id}/wireless"
+    },
+    {
+      "method": "POST",
+      "path": "/api/gateways/{node_id}/wireless/{radio}/scan"
+    },
+    {
+      "method": "POST",
+      "path": "/api/gateways/{node_id}/network/plan"
+    },
+    {
+      "method": "GET",
+      "path": "/api/gateways/{node_id}/packages"
+    },
+    {
+      "method": "POST",
+      "path": "/api/gateways/{node_id}/packages/plan"
+    },
+    {
+      "method": "POST",
+      "path": "/api/gateways/{node_id}/router-operations"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/gateways/{node_id}/operation-plans/{token}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/gateways/{node_id}/deletion-plan"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/gateways/{node_id}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/gateways/reserve/refresh"
+    },
+    {
+      "method": "POST",
+      "path": "/api/gateways/{node_id}/refresh"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/gateways/{node_id}/credentials"
+    },
+    {
+      "method": "GET",
+      "path": "/api/gateways/{node_id}/logs"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/gateways/{node_id}/ssh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/gateways/{node_id}/adguard"
+    },
+    {
+      "method": "WEBSOCKET",
+      "path": "/api/gateways/{gateway_id}/shell/ws"
+    },
+    {
+      "method": "GET",
+      "path": "/api/settings/openwrt"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/settings/openwrt"
+    },
+    {
+      "method": "GET",
+      "path": "/api/files/gateway-backups"
+    },
+    {
+      "method": "GET",
+      "path": "/api/files/gateway-backups/{archive_id}/download"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/files/gateway-backups/{archive_id}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/gateways/{node_id}/services/{service}/version"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/files/services/groups/{service}/{major}"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/files/services/{archive_id}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/files/services"
+    }
+  ]
+}

@@ -11,9 +11,9 @@ class DashboardSelectionTest {
         val problems = listOf(ServerSummary("offline", online = false), ServerSummary("ssh", online = true, sshError = "auth"))
         repeat(20) {
             val selected = pickDashboardServers(healthy + problems)
-            assertEquals(6, selected.size)
+            assertEquals(4, selected.size)
             assertEquals(problems.map { it.id }.toSet(), selected.take(2).map { it.id }.toSet())
-            assertEquals(6, selected.map { it.id }.distinct().size)
+            assertEquals(4, selected.map { it.id }.distinct().size)
         }
     }
     @Test fun emptyAndSmallInventoriesRemainComplete() {

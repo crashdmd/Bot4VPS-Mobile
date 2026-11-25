@@ -28,7 +28,7 @@ class SettingsViewModel @Inject constructor(val authRepository: AuthRepository, 
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(onLogout: () -> Unit, onChangeUrl: () -> Unit, onSection: (String) -> Unit = {}, viewModel: SettingsViewModel = hiltViewModel()) {
+fun SettingsScreen(onLogout: () -> Unit, onChangeUrl: () -> Unit, onSection: (String) -> Unit = {}, showHistory: Boolean = false, viewModel: SettingsViewModel = hiltViewModel()) {
     val scope = rememberCoroutineScope()
     var logoutBusy by remember { mutableStateOf(false) }
     var confirmLogout by remember { mutableStateOf(false) }
@@ -54,6 +54,7 @@ fun SettingsScreen(onLogout: () -> Unit, onChangeUrl: () -> Unit, onSection: (St
             item { Text("Инструменты", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(top = 12.dp)) }
             item { ActionRow("Мониторинг Bot4VPS", "Нагрузка хоста и состояние компонентов", Icons.Default.MonitorHeart, { onSection("monitor") }) }
             item { ActionRow("Файлы и SSH-ключи", "Скрипты, библиотека и ключи доступа", Icons.Default.FolderOpen, { onSection("files") }) }
+            if (showHistory) item { ActionRow("История", "События и выполненные задачи", Icons.Default.History, { onSection("events") }) }
             item { ActionRow("Графики серверов", "История нагрузки", Icons.Default.ShowChart, { onSection("metrics") }) }
             item { ActionRow("Аудит", "Журнал действий пользователей", Icons.Default.FactCheck, { onSection("audit") }) }
             item { ActionRow("Подключение", "Выбрать сервис или создать новую связь", Icons.Default.Link, onChangeUrl) }

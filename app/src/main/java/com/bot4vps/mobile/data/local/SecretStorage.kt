@@ -53,6 +53,16 @@ class SecretStorage @Inject constructor(@ApplicationContext context: Context) {
     }
 
     @Synchronized
+    fun removeConnectionMigrations(deviceId: String, origins: Set<String>) {
+        val slots = prefs.all.keys.filter { it == "pending_api_migration" || it.startsWith("obsolete_api_migration_") }
+        for (slot in slots) {
+            val raw = readStrict(slot) ?: continue
+            val change = kotlinx.serialization.json.Json.decodeFromString<com.bot4vps.mobile.data.model.MobileConnectionChange>(raw)
+            if (change.deviceId == deviceId && listOf(change.sourceOrigin, change.origin, change.profileOrigin).any { it in origins }) write(null, slot)
+        }
+    }
+
+    @Synchronized
     fun write(value: String?, slot: String = "cookies") {
         if (value == null) {
             check(prefs.edit().remove(slot).commit()) { "Не удалось сохранить настройки защиты" }

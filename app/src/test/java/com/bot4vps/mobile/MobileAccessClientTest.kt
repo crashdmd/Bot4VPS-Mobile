@@ -80,6 +80,36 @@ class MobileAccessClientTest {
             }
         }
     }
+    @Test fun browserSocketsShareDeviceProofAcrossAssetsAndLogin(): Unit = runBlocking {
+        val (server, transport) = tls()
+        try {
+            val keys = Keys(); val api = Api(keys)
+            var protocols = 0
+            server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse {
+                    if (request.path?.startsWith("/api/mobile/") == true && ++protocols > 30)
+                        return MockResponse().setResponseCode(429).setBody("{\"detail\":\"Слишком много попыток подключения\"}")
+                    return api.dispatch(request)
+                }
+            }
+            val mobile = MobileAccessClient(keys, Json, transport)
+            mobile.pair(server.url("/").toString(), invitation(server))
+            val base = transport.newBuilder().addInterceptor(MobileAccessInterceptor(mobile)).build()
+            val client = mobile.clientFor(base, server.url("/api/shell/ws"))
+            repeat(18) {
+                val opened = CountDownLatch(1); var failure: Throwable? = null
+                val socket = client.newWebSocket(Request.Builder().url(server.url("/api/shell/ws"))
+                    .tag(ReuseMobileSocketSession::class.java, ReuseMobileSocketSession).build(), object : WebSocketListener() {
+                    override fun onOpen(webSocket: WebSocket, response: Response) { opened.countDown() }
+                    override fun onFailure(webSocket: WebSocket, error: Throwable, response: Response?) { failure = error; opened.countDown() }
+                })
+                assertTrue(opened.await(3, TimeUnit.SECONDS)); assertNull(failure); socket.cancel()
+            }
+            assertEquals(1, api.handshakes)
+            assertEquals(3, protocols) // pairing plus one challenge/handshake, not two per asset.
+        } finally { server.shutdown() }
+    }
+
     @Test fun httpRequestsCannotSendFakeTokensOrWebCredentials(): Unit = runBlocking {
         val server = MockWebServer(); server.start()
         try {

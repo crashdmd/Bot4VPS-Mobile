@@ -150,7 +150,7 @@ fun MasterKeyViewDialog(client: NativePanelClient, protection: AppLockManager, o
     }
     if (state.step in setOf(MasterKeyStep.LOCAL, MasterKeyStep.SETUP_PIN)) {
         val remaining = (lock.retryAt - now).coerceIn(0, 300_000)
-        Dialog(onDismissRequest = ::dismiss, properties = DialogProperties(usePlatformDefaultWidth = false,
+        Dialog(onDismissRequest = ::dismiss, properties = DialogProperties(dismissOnClickOutside = false, usePlatformDefaultWidth = false,
             decorFitsSystemWindows = false, securePolicy = SecureFlagPolicy.SecureOn)) {
             PinEntryScreen(title = "Подтвердите личность", prompt = "Введите PIN-код Bot4VPS", digits = value.length,
                 onDigit = { digit ->
@@ -167,7 +167,7 @@ fun MasterKeyViewDialog(client: NativePanelClient, protection: AppLockManager, o
         return
     }
     PanelAlertDialog(onDismissRequest = ::dismiss,
-        properties = DialogProperties(securePolicy = SecureFlagPolicy.SecureOn),
+        properties = DialogProperties(dismissOnClickOutside = false, securePolicy = SecureFlagPolicy.SecureOn),
         title = { Text(when (state.step) { MasterKeyStep.BLOCKED -> "Просмотр пока недоступен"; MasterKeyStep.LOADING, MasterKeyStep.LOCAL, MasterKeyStep.SETUP_PIN, MasterKeyStep.PASSWORD -> "Просмотр мастер-ключа"; MasterKeyStep.CODE -> "Подтверждение владельца"; MasterKeyStep.READY -> "Личность подтверждена"; MasterKeyStep.KEY -> "Мастер-ключ" }) },
         text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             when (state.step) {

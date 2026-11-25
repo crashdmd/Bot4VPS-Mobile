@@ -19,8 +19,8 @@ import androidx.compose.material.icons.filled.Close
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TerminalScreen(serverId: String, sessions: TerminalSessionsViewModel, onBack: () -> Unit) {
-    val session = remember(serverId, sessions) { sessions.session(serverId) }
+fun TerminalScreen(serverId: String, sessions: TerminalSessionsViewModel, onBack: () -> Unit, gateway: Boolean = false) {
+    val session = remember(serverId, gateway, sessions) { sessions.session(serverId, gateway) }
     val owner = remember(session) { Any() }
     val status by session.status.collectAsStateWithLifecycle()
     val revision by session.revision.collectAsStateWithLifecycle()
@@ -44,7 +44,7 @@ fun TerminalScreen(serverId: String, sessions: TerminalSessionsViewModel, onBack
         text = { Text("Соединение закроется сразу. При следующем открытии терминала начнётся новая сессия.") },
         confirmButton = { TextButton(onClick = { confirmClose = false; session.close(); terminal?.hideKeyboard(); keyboard?.hide(); onBack() }) { Text("Завершить") } },
         dismissButton = { TextButton(onClick = { confirmClose = false }) { Text("Отмена") } })
-    PanelScaffold(topBar = { PanelTopBar(title = { Text("SSH-терминал") }, navigationIcon = { TextButton(onClick = { terminal?.hideKeyboard(); keyboard?.hide(); onBack() }) { Text("Назад") } }, actions = { IconButton(onClick = { confirmClose = true }) { Icon(Icons.Default.Close, "Завершить сессию") } }) }) { padding ->
+    PanelScaffold(topBar = { PanelTopBar(title = { Text(if (gateway) "Консоль шлюза" else "SSH-терминал") }, navigationIcon = { TextButton(onClick = { terminal?.hideKeyboard(); keyboard?.hide(); onBack() }) { Text("Назад") } }, actions = { IconButton(onClick = { confirmClose = true }) { Icon(Icons.Default.Close, "Завершить сессию") } }) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).imePadding()) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                 Text(status.message, Modifier.weight(1f).padding(vertical = 6.dp), style = MaterialTheme.typography.bodySmall)

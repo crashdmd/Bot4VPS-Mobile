@@ -207,7 +207,7 @@ fun PanelSettingsScreen(onBack: () -> Unit, onOperation: (String) -> Unit, onLog
         text = { Text("Сохранённые записи и логи будут удалены без возможности восстановления.") },
         confirmButton = { TextButton(onClick = { clear = null; viewModel.save(if (kind == "tasks") "/api/tasks/history" else "/api/events", buildJsonObject { }, "Записи удалены", "DELETE") }) { Text("Очистить") } },
         dismissButton = { TextButton(onClick = { clear = null }) { Text("Отмена") } }) }
-    if (tlsModes) ModalBottomSheet(onDismissRequest = { tlsModes = false }) {
+    if (tlsModes) com.bot4vps.mobile.ui.components.PanelModalBottomSheet(onDismissRequest = { tlsModes = false }) {
         Column(Modifier.padding(16.dp)) {
             Text("Защищённое подключение HTTPS", style = MaterialTheme.typography.titleMedium)
             listOf("self-signed" to "Самоподписанный сертификат", "letsencrypt" to "Let's Encrypt", "custom" to "Готовый сертификат на сервере", "upload" to "Загрузить сертификат", "proxy" to "Обратный прокси").forEach { (mode, title) ->
@@ -240,6 +240,7 @@ fun PanelSettingsScreen(onBack: () -> Unit, onOperation: (String) -> Unit, onLog
             when (viewModel.category) {
                 "common" -> {
                     item { SettingsCard("Оформление", "Выберите удобную тему интерфейса. Изменение применяется сразу на этом телефоне.") { ThemeChoices(theme, viewModel::theme) } }
+                    item { com.bot4vps.mobile.ui.gateways.GatewayFeatureCard() }
                     item { SettingsCard("Часовой пояс", "Определяет время журналов и расписаний на хосте Bot4VPS. Часовой пояс телефона не меняется.") {
                         val tz = viewModel.data["/api/settings/timezone"]
                         val zones = (tz?.get("options") as? JsonArray).orEmpty().flatMap { group ->

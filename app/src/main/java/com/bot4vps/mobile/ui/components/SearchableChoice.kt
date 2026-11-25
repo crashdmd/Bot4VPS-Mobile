@@ -20,7 +20,7 @@ fun SearchableChoice(label: String, selected: String?, options: List<Pair<String
         Text("$label: ${options.find { it.first == selected }?.second ?: selected ?: emptyLabel}", Modifier.weight(1f))
         Icon(Icons.Default.ExpandMore, "Выбрать")
     }
-    if (expanded) ModalBottomSheet(onDismissRequest = { expanded = false }) {
+    if (expanded) com.bot4vps.mobile.ui.components.PanelModalBottomSheet(onDismissRequest = { expanded = false }) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
             Text(label, style = MaterialTheme.typography.titleLarge)
             PanelSearchField(query, { query = it }, placeholder = searchHint, modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp))

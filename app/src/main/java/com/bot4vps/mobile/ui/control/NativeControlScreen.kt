@@ -85,6 +85,10 @@ fun NativeSectionScreen(section: String, onBack: (() -> Unit)? = null, onOperati
             }, { Text(view.title) }, enabled=!state.busy && !state.loading) }
         }
     } }, snackbarHost = { SnackbarHost(snack) }) { padding ->
+        if (section == "files" && state.selectedView == "service_archives") {
+            com.bot4vps.mobile.ui.files.ServiceArchivesContent(Modifier.fillMaxSize().padding(padding))
+            return@PanelScaffold
+        }
         Refreshable(state.loading || state.busy, { viewModel.execute() }, Modifier.fillMaxSize().padding(padding),
             enabled = state.operation?.method == "GET" && state.operation?.download != true && state.operation?.path?.endsWith("/ping") != true) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding=PaddingValues(16.dp), verticalArrangement=refreshArrangement(10.dp)) {
@@ -252,7 +256,7 @@ fun NativeRecordSheet(selected: Pair<JsonObject, String>, viewModel: NativeContr
             } }, confirmButton = { TextButton(onClick = onDismiss) { Text("Закрыть") } })
         return
     }
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    com.bot4vps.mobile.ui.components.PanelModalBottomSheet(onDismissRequest = onDismiss) {
         LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             item { Text(record.text("display_name") ?: record.text("name") ?: record.text("filename") ?: record.text("title") ?: "Выбранная запись", style = MaterialTheme.typography.titleMedium) }
             item { NativeDataView(record, state.contract?.labels.orEmpty()) }

@@ -24,7 +24,7 @@ import com.bot4vps.mobile.ui.components.*
 import com.bot4vps.mobile.ui.theme.*
 
 @Composable
-fun LoginScreen(onLoggedIn: () -> Unit, onChangeUrl: () -> Unit, onOtherPanel: () -> Unit,
+fun LoginScreen(onLoggedIn: () -> Unit, onChangeUrl: () -> Unit,
     onAuthenticator: () -> Unit = {}, viewModel: LoginViewModel = hiltViewModel()) {
     val state by viewModel.uiState.collectAsState()
     var manualCode by remember { mutableStateOf(false) }
@@ -55,16 +55,15 @@ fun LoginScreen(onLoggedIn: () -> Unit, onChangeUrl: () -> Unit, onOtherPanel: (
             } else Text("Приложение проверяет ключ привязанного телефона автоматически.", color = OnSurfaceVariant, fontSize = 13.sp)
             if (state.pairingSuccess) Text("Телефон успешно привязан", color = OnSurfaceVariant, fontSize = 13.sp)
             state.error?.let { Text(it, color = Error, fontSize = 13.sp, modifier = Modifier.fillMaxWidth()) }
-            PanelButton(onClick = { if (state.pairingRequired) viewModel.pairPhone() else viewModel.reconnect() },
-                enabled = !state.isLoading && (!state.pairingRequired || manualCode),
+            if (!state.pairingRequired || manualCode) PanelButton(onClick = { if (state.pairingRequired) viewModel.pairPhone() else viewModel.reconnect() },
+                enabled = !state.isLoading && (!state.pairingRequired || state.pairingCode.isNotBlank()),
                 modifier = Modifier.fillMaxWidth().height(48.dp)) {
                 if (state.isLoading) CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.height(22.dp))
                 else Text(if (state.pairingRequired) "Привязать телефон" else "Повторить подключение", fontWeight = FontWeight.SemiBold)
             }
-            if (!state.pairingRequired) TextButton(enabled = !state.isLoading, onClick = viewModel::showPairing) { Text("Привязать телефон заново") }
+            if (!state.pairingRequired) TextButton(enabled = !state.isLoading, onClick = viewModel::showPairing) { Text("Новое подключение по QR или коду") }
             TextButton(onClick = onAuthenticator) { Text("Authenticator · доступен без панели") }
-            TextButton(onClick = { viewModel.cancelConnection(); onChangeUrl() }) { Text("Изменить адрес", color = OnSurfaceVariant) }
-            TextButton(onClick = { viewModel.cancelConnection(); onOtherPanel() }) { Text("Подключиться к другой панели", color = OnSurfaceVariant) }
+            TextButton(onClick = { viewModel.cancelConnection(); onChangeUrl() }) { Text("Выбрать сервис или изменить адрес", color = OnSurfaceVariant) }
         }
     }
 }

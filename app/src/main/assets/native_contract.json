@@ -1,5 +1,5 @@
 {
-  "version": "7.2.0",
+  "version": "7.5.0",
   "sections": {
     "dashboard": "Обзор",
     "servers": "Серверы",
@@ -2569,6 +2569,144 @@
       ],
       "body": null,
       "destructive": false,
+      "download": false
+    },
+    {
+      "id": "GET /api/files/gateway-backups",
+      "method": "GET",
+      "path": "/api/files/gateway-backups",
+      "section": "files",
+      "title": "Файлы · Gateway-backups",
+      "group": "Файлы",
+      "fields": [],
+      "body": null,
+      "destructive": false,
+      "download": false
+    },
+    {
+      "id": "GET /api/files/gateway-backups/{archive_id}/download",
+      "method": "GET",
+      "path": "/api/files/gateway-backups/{archive_id}/download",
+      "section": "files",
+      "title": "Gateway-backups · Скачивание",
+      "group": "Gateway-backups",
+      "fields": [
+        {
+          "type": "string",
+          "name": "archive_id",
+          "location": "path",
+          "title": "Archive id",
+          "required": true
+        }
+      ],
+      "body": null,
+      "destructive": false,
+      "download": true
+    },
+    {
+      "id": "DELETE /api/files/gateway-backups/{archive_id}",
+      "method": "DELETE",
+      "path": "/api/files/gateway-backups/{archive_id}",
+      "section": "files",
+      "title": "Удалить: Файлы · Gateway-backups",
+      "group": "Файлы",
+      "fields": [
+        {
+          "type": "string",
+          "name": "archive_id",
+          "location": "path",
+          "title": "Archive id",
+          "required": true
+        }
+      ],
+      "body": null,
+      "destructive": true,
+      "download": false
+    },
+    {
+      "id": "GET /api/files/services",
+      "method": "GET",
+      "path": "/api/files/services",
+      "section": "files",
+      "title": "Файлы · Сервисы",
+      "group": "Файлы",
+      "fields": [],
+      "body": null,
+      "destructive": false,
+      "download": false
+    },
+    {
+      "id": "DELETE /api/files/services/groups/{service}/{major}",
+      "method": "DELETE",
+      "path": "/api/files/services/groups/{service}/{major}",
+      "section": "files",
+      "title": "Удалить: Сервисы · Группы серверов",
+      "group": "Сервисы",
+      "fields": [
+        {
+          "type": "string",
+          "name": "service",
+          "location": "path",
+          "title": "Service",
+          "required": true
+        },
+        {
+          "type": "string",
+          "name": "major",
+          "location": "path",
+          "title": "Major",
+          "required": true
+        }
+      ],
+      "body": null,
+      "destructive": true,
+      "download": false
+    },
+    {
+      "id": "GET /api/files/services/{archive_id}/download",
+      "method": "GET",
+      "path": "/api/files/services/{archive_id}/download",
+      "section": "files",
+      "title": "Сервисы · Скачивание",
+      "group": "Сервисы",
+      "fields": [
+        {
+          "type": "string",
+          "name": "archive_id",
+          "location": "path",
+          "title": "Archive id",
+          "required": true
+        },
+        {
+          "type": "integer",
+          "name": "file",
+          "location": "query",
+          "title": "Файл",
+          "required": true
+        }
+      ],
+      "body": null,
+      "destructive": false,
+      "download": true
+    },
+    {
+      "id": "DELETE /api/files/services/{archive_id}",
+      "method": "DELETE",
+      "path": "/api/files/services/{archive_id}",
+      "section": "files",
+      "title": "Удалить: Файлы · Сервисы",
+      "group": "Файлы",
+      "fields": [
+        {
+          "type": "string",
+          "name": "archive_id",
+          "location": "path",
+          "title": "Archive id",
+          "required": true
+        }
+      ],
+      "body": null,
+      "destructive": true,
       "download": false
     },
     {
@@ -6333,6 +6471,49 @@
           "host"
         ],
         "model": "SshTestBody"
+      },
+      "destructive": false,
+      "download": false
+    },
+    {
+      "id": "GET /api/settings/openwrt",
+      "method": "GET",
+      "path": "/api/settings/openwrt",
+      "section": "settings",
+      "title": "Настройки · Openwrt",
+      "group": "Настройки",
+      "fields": [],
+      "body": null,
+      "destructive": false,
+      "download": false
+    },
+    {
+      "id": "PUT /api/settings/openwrt",
+      "method": "PUT",
+      "path": "/api/settings/openwrt",
+      "section": "settings",
+      "title": "Изменить: Настройки · Openwrt",
+      "group": "Настройки",
+      "fields": [],
+      "body": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Включено",
+            "nullable": false
+          },
+          "confirmed": {
+            "type": "boolean",
+            "title": "Confirmed",
+            "nullable": false,
+            "default": false
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "model": "OpenWrtFeatureBody"
       },
       "destructive": false,
       "download": false

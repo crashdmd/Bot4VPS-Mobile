@@ -10,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
@@ -59,6 +60,11 @@ object Routes {
     const val SERVICE_ACTIONS = "service/{serviceId}/{serverId}/actions"
     const val SERVICE_DETAIL = "service/{serviceId}/{serverId}"
     const val HISTORY_DETAIL = "history/detail?serverId={serverId}&taskId={taskId}"
+    const val SERVICE_ARCHIVES = "service-archives"
+    const val GATEWAYS = "gateways"
+    const val GATEWAY_DETAIL = "gateway/{gatewayId}"
+    const val GATEWAY_ADD = "gateway-add"
+    fun gatewayDetail(id: String) = "gateway/${Uri.encode(id)}"
     const val SETTINGS = "settings"
     const val SERVER_DETAIL = "server/{serverId}"
     const val SERVER_SETTINGS = "server/{serverId}/settings?page={page}"
@@ -66,6 +72,7 @@ object Routes {
     const val OPERATION = "operation/{operationId}?serverId={serverId}"
     const val ROOT_OPERATION = "root-operation/{operationId}"
     const val METRICS = "metrics?serverId={serverId}&ts={ts}&recordId={recordId}"
+    const val GATEWAY_TERMINAL = "gateway-terminal/{gatewayId}"
     const val TERMINAL = "terminal/{serverId}"
     fun serviceDetail(kind: ServiceKind, id: String) = "service/${Uri.encode(kind.id)}/${Uri.encode(id)}"
     fun history(serverId: String? = null, taskId: String? = null) = "history/detail?serverId=${Uri.encode(serverId.orEmpty())}&taskId=${Uri.encode(taskId.orEmpty())}"
@@ -77,7 +84,7 @@ object Routes {
     fun metrics(id: String, ts: Long, recordId: String) = "metrics?serverId=${Uri.encode(id)}&ts=$ts&recordId=${Uri.encode(recordId)}"
 }
 private data class Tab(val route: String, val label: String, val icon: ImageVector)
-private val tabs = listOf(Tab(Routes.DASHBOARD,"Обзор",Icons.Default.Dashboard),Tab(Routes.SERVERS,"Серверы",Icons.Default.Dns),Tab(Routes.SERVICES,"Сервисы",Icons.Default.Widgets),Tab(Routes.EVENTS,"История",Icons.Default.History),Tab(Routes.SETTINGS,"Ещё",Icons.Default.Apps))
+private val defaultTabs = listOf(Tab(Routes.DASHBOARD,"Обзор",Icons.Default.Dashboard),Tab(Routes.SERVERS,"Серверы",Icons.Default.Dns),Tab(Routes.SERVICES,"Сервисы",Icons.Default.Widgets),Tab(Routes.EVENTS,"История",Icons.Default.History),Tab(Routes.SETTINGS,"Ещё",Icons.Default.Apps))
 
 @Composable
 fun Bot4VpsNavHost(terminalSessions: TerminalSessionsViewModel, eventId: String? = null, onEventConsumed: () -> Unit = {}, revokedOrigin: String? = null, connectionChange: com.bot4vps.mobile.data.model.ConnectionNotice? = null) {
@@ -102,14 +109,14 @@ fun Bot4VpsNavHost(terminalSessions: TerminalSessionsViewModel, eventId: String?
     var editingAddress by remember { mutableStateOf<Boolean?>(null) }
     fun changeUrl() { editingAddress = false }
     editingAddress?.let { newPanel -> PanelAddressDialog(newPanel = newPanel,
-        onDismiss = { editingAddress = null }, onSaved = { editingAddress = null; terminalSessions.closeAll(); root.navigate(Routes.LOGIN) { popUpTo(root.graph.id) { inclusive = true }; launchSingleTop = true } }) }
+        onDismiss = { editingAddress = null; if (root.currentDestination?.route == Routes.MAIN || activeAddress.isNullOrBlank()) login() }, onSaved = { editingAddress = null; terminalSessions.closeAll(); root.navigate(Routes.LOGIN) { popUpTo(root.graph.id) { inclusive = true }; launchSingleTop = true } }) }
     NavHost(root,startDestination=first,
         enterTransition = { fadeIn(tween(150)) }, exitTransition = { fadeOut(tween(150)) },
         popEnterTransition = { fadeIn(tween(150)) }, popExitTransition = { fadeOut(tween(150)) }) {
         composable(Routes.SETUP_URL) { SetupUrlScreen(onAuthenticator = { root.navigate(Routes.ROOT_AUTHENTICATOR) }, onUrlSaved = { root.navigate(Routes.LOGIN) { popUpTo(Routes.SETUP_URL) { inclusive=true } } }) }
         composable(Routes.LOGIN) {
             LoginScreen(onLoggedIn = { root.navigate(Routes.MAIN) { popUpTo(Routes.LOGIN) { inclusive=true } } },
-                onAuthenticator = { root.navigate(Routes.ROOT_AUTHENTICATOR) }, onChangeUrl=::changeUrl, onOtherPanel={ editingAddress = true })
+                onAuthenticator = { root.navigate(Routes.ROOT_AUTHENTICATOR) }, onChangeUrl=::changeUrl)
         }
         composable(Routes.ROOT_AUTHENTICATOR) { com.bot4vps.mobile.ui.authenticator.AuthenticatorScreen(onBack = { root.popBackStack() }, offline = true, onConnect = ::changeUrl) }
         composable(Routes.ROOT_OPERATION,arguments=listOf(navArgument("operationId") { type=NavType.StringType })) {
@@ -122,6 +129,11 @@ fun Bot4VpsNavHost(terminalSessions: TerminalSessionsViewModel, eventId: String?
 @Composable
 private fun MainShell(terminalSessions: TerminalSessionsViewModel,onLogout: () -> Unit,onChangeUrl: () -> Unit, eventId: String?, onEventConsumed: () -> Unit) {
     val nav=rememberNavController()
+    val gateways: com.bot4vps.mobile.ui.gateways.GatewayViewModel = hiltViewModel()
+    val gatewayInventory by gateways.inventory.collectAsState()
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(lifecycle, gateways) { lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) { gateways.observe() } }
+    val tabs = if (gatewayInventory.enabled) listOf(defaultTabs[0], Tab(Routes.GATEWAYS, "Шлюзы", Icons.Default.Router), defaultTabs[1], defaultTabs[2], defaultTabs[4]) else defaultTabs
     var activeTab by rememberSaveable { mutableStateOf(Routes.DASHBOARD) }
     fun openTab(route: String) {
         activeTab=route
@@ -129,7 +141,7 @@ private fun MainShell(terminalSessions: TerminalSessionsViewModel,onLogout: () -
     }
     LaunchedEffect(eventId) {
         if (eventId != null) {
-            activeTab = Routes.EVENTS
+            activeTab = if (gatewayInventory.enabled) Routes.SETTINGS else Routes.EVENTS
             nav.navigate(Routes.section("events") + "&recordId=${Uri.encode(eventId)}")
             onEventConsumed()
         }
@@ -137,7 +149,11 @@ private fun MainShell(terminalSessions: TerminalSessionsViewModel,onLogout: () -
     val backStack by nav.currentBackStackEntryAsState()
     val current=backStack?.destination?.route
     LaunchedEffect(current) { if(tabs.any { it.route == current }) activeTab=current!! }
-    val terminalOpen = current == Routes.TERMINAL
+    LaunchedEffect(gatewayInventory.enabled, current) {
+        if (!gatewayInventory.enabled && (current == Routes.GATEWAYS || current == Routes.GATEWAY_DETAIL || current == Routes.GATEWAY_ADD || current == Routes.GATEWAY_TERMINAL)) openTab(Routes.DASHBOARD)
+        if (gatewayInventory.enabled && activeTab == Routes.EVENTS) activeTab = Routes.SETTINGS
+    }
+    val terminalOpen = current == Routes.TERMINAL || current == Routes.GATEWAY_TERMINAL
     Scaffold(containerColor=Background,contentWindowInsets=WindowInsets(0,0,0,0),bottomBar={
         if (!terminalOpen) NavigationBar(containerColor=Surface) {
             tabs.forEach { tab -> NavigationBarItem(selected=activeTab==tab.route,onClick={ openTab(tab.route) },
@@ -147,13 +163,19 @@ private fun MainShell(terminalSessions: TerminalSessionsViewModel,onLogout: () -
         NavHost(nav,startDestination=Routes.DASHBOARD,modifier=Modifier.padding(padding).consumeWindowInsets(padding),
             enterTransition = { fadeIn(tween(150)) }, exitTransition = { fadeOut(tween(150)) },
             popEnterTransition = { fadeIn(tween(150)) }, popExitTransition = { fadeOut(tween(150)) }) {
+            composable(Routes.GATEWAYS) { com.bot4vps.mobile.ui.gateways.GatewaysScreen(onGateway={ nav.navigate(Routes.gatewayDetail(it)) }, onAdd={ nav.navigate(Routes.GATEWAY_ADD) }) }
+            composable(Routes.GATEWAY_DETAIL, arguments=listOf(navArgument("gatewayId") { type=NavType.StringType })) { entry ->
+                com.bot4vps.mobile.ui.gateways.GatewayDetailScreen(id=entry.arguments?.getString("gatewayId").orEmpty(), onBack={ nav.popBackStack() }, onTerminal={ nav.navigate("gateway-terminal/${Uri.encode(it)}") }, onHistory={ nav.navigate(Routes.history(taskId=it)) })
+            }
+            composable(Routes.GATEWAY_ADD) { com.bot4vps.mobile.ui.gateways.GatewayAddScreen(onBack={ nav.popBackStack() }, onAdded={ nav.navigate(Routes.gatewayDetail(it)) { popUpTo(Routes.GATEWAY_ADD) { inclusive=true } } }, onHistory={ nav.navigate(Routes.history(taskId=it)) }) }
             composable(Routes.SERVERS) { ServersScreen(onOpenServer={ nav.navigate(Routes.serverDetail(it)) },
                 onCreate={ nav.navigate(Routes.operation("POST /api/servers")) },onGroups={ nav.navigate(Routes.section("groups")) }) }
             composable(Routes.DASHBOARD) {
                 DashboardScreen(onServer={ nav.navigate(Routes.serverDetail(it)) },
                     onServers={ openTab(Routes.SERVERS) }, onAddServer={ nav.navigate(Routes.operation("POST /api/servers")) },
                     onMonitor={ nav.navigate(Routes.section("monitor")) }, onLogin=onLogout,
-                    onEvents={ openTab(Routes.EVENTS) }, onEvent={ nav.navigate(Routes.section("events") + "&recordId=${Uri.encode(it)}") })
+                    onGateway={ nav.navigate(Routes.gatewayDetail(it)) }, onGateways={ openTab(Routes.GATEWAYS) },
+                    onEvents={ if (gatewayInventory.enabled) { activeTab=Routes.SETTINGS; nav.navigate(Routes.EVENTS) } else openTab(Routes.EVENTS) }, onEvent={ activeTab=if (gatewayInventory.enabled) Routes.SETTINGS else Routes.EVENTS; nav.navigate(Routes.section("events") + "&recordId=${Uri.encode(it)}") })
             }
             composable(Routes.EVENTS, arguments=listOf(navArgument("section") { type=NavType.StringType; defaultValue="events" })) {
                 NativeSectionScreen("events", onOperation={ nav.navigate(Routes.operation(it)) }, onHistory={ nav.navigate(Routes.TASKS) })
@@ -180,8 +202,8 @@ private fun MainShell(terminalSessions: TerminalSessionsViewModel,onLogout: () -
                 ScriptsScreen(onBack={ nav.popBackStack() }, onFiles={ nav.navigate(Routes.section("files",view="scripts")) }, onOperation={ nav.navigate(Routes.operation(it)) }, onHistory={ nav.navigate(Routes.history(taskId=it)) })
             }
             composable(Routes.SCRIPTS) { ScriptsScreen(onFiles={ nav.navigate(Routes.section("files",view="scripts")) },onOperation={ nav.navigate(Routes.operation(it)) },onHistory={ nav.navigate(Routes.history(taskId=it)) }) }
-            composable(Routes.SETTINGS) { SettingsScreen(onLogout=onLogout,onChangeUrl=onChangeUrl,onSection={ section ->
-                if (section=="dashboard") nav.navigate(Routes.DASHBOARD) else if (section=="metrics") nav.navigate("metrics") else nav.navigate(Routes.section(section))
+            composable(Routes.SETTINGS) { SettingsScreen(onLogout=onLogout,onChangeUrl=onChangeUrl,showHistory=gatewayInventory.enabled,onSection={ section ->
+                if (section=="events") { activeTab=Routes.SETTINGS; nav.navigate(Routes.EVENTS) } else if (section=="dashboard") nav.navigate(Routes.DASHBOARD) else if (section=="metrics") nav.navigate("metrics") else nav.navigate(Routes.section(section))
             }) }
             composable(Routes.SERVER_DETAIL,arguments=listOf(navArgument("serverId") { type=NavType.StringType })) { entry ->
                 val id=entry.arguments?.getString("serverId") ?: return@composable
@@ -220,6 +242,9 @@ private fun MainShell(terminalSessions: TerminalSessionsViewModel,onLogout: () -
             }
             composable(Routes.METRICS,arguments=listOf(navArgument("serverId") { type=NavType.StringType; nullable=true; defaultValue=null },navArgument("ts") { type=NavType.StringType; defaultValue="" },navArgument("recordId") { type=NavType.StringType; defaultValue="" })) {
                 MetricsScreen(onBack={ nav.popBackStack() }, onAdvanced={ server -> nav.navigate(Routes.section("audit", server)) },onAudit={ server,record -> nav.navigate(Routes.audit(record,server)) })
+            }
+            composable(Routes.GATEWAY_TERMINAL, arguments=listOf(navArgument("gatewayId") { type=NavType.StringType })) { entry ->
+                TerminalScreen(serverId=entry.arguments?.getString("gatewayId").orEmpty(), gateway=true, sessions=terminalSessions, onBack={ nav.popBackStack() })
             }
             composable(Routes.TERMINAL,arguments=listOf(navArgument("serverId") { type=NavType.StringType })) { entry ->
                 val id = entry.arguments?.getString("serverId") ?: return@composable

@@ -106,7 +106,7 @@ private fun LockPinDialog(action: LockAction, manager: AppLockManager, migrating
         PinEntryStage.REPEAT -> if (action == LockAction.CHANGE) "Повторите новый PIN-код" else "Повторите PIN-код"
     }
     Dialog(onDismissRequest = { if (!state.busy) onDismiss() },
-        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false, securePolicy = SecureFlagPolicy.SecureOn)) {
+        properties = DialogProperties(dismissOnClickOutside = false, usePlatformDefaultWidth = false, decorFitsSystemWindows = false, securePolicy = SecureFlagPolicy.SecureOn)) {
         PinEntryScreen(title = title, prompt = prompt, digits = draft.digits.length, onDigit = ::digit,
             onDelete = { draft = draft.delete(); mismatch = false; manager.clearError() }, onBack = onDismiss,
             enabled = !state.busy && remaining == 0L, busy = state.busy,

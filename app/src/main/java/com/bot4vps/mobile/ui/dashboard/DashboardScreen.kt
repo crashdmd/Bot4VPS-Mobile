@@ -29,8 +29,9 @@ import java.time.LocalTime
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(onBack: (() -> Unit)? = null, onServer: (String) -> Unit, onServers: () -> Unit, onAddServer: () -> Unit,
-    onMonitor: () -> Unit, onEvents: () -> Unit, onEvent: (String) -> Unit, onLogin: () -> Unit, viewModel: DashboardViewModel = hiltViewModel(), updates: UpdatesViewModel = hiltViewModel()) {
+    onMonitor: () -> Unit, onGateway: (String) -> Unit = {}, onGateways: () -> Unit = {}, onEvents: () -> Unit, onEvent: (String) -> Unit, onLogin: () -> Unit, viewModel: DashboardViewModel = hiltViewModel(), updates: UpdatesViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val gateways by viewModel.gateways.inventory.collectAsStateWithLifecycle()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val listState = rememberLazyListState()
     LaunchedEffect(state.update) { updates.acceptSnapshot(state.update) }
@@ -62,6 +63,7 @@ fun DashboardScreen(onBack: (() -> Unit)? = null, onServer: (String) -> Unit, on
                     TextButton(onClick = onAddServer, modifier = Modifier.weight(1f)) { Text("Добавить сервер") }
                 }
             } }
+            if (gateways.enabled) item(key = "gateways") { com.bot4vps.mobile.ui.gateways.DashboardGateways(gateways, onGateway, onGateways) }
             item(key = "system") { PanelCard("Состояние системы") {
                 DashboardSystem(state.system.takeIf { state.systemError == null }, state.samples)
                 state.systemError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
@@ -77,7 +79,10 @@ fun DashboardScreen(onBack: (() -> Unit)? = null, onServer: (String) -> Unit, on
                 } }
                 TextButton(onClick = onEvents) { Text("Все события →") }
             } }
-            item(key = "updates") { ActionRow("Обновления Bot4VPS", if (updates.busy) "Проверяем обновления…" else updates.available?.let { "Доступна версия $it" } ?: "Проверить наличие новой версии", Icons.Default.SystemUpdateAlt, updates::checkFromDashboard, enabled = !updates.busy && !updates.active) }
+            item(key = "updates") { PanelButton(onClick = updates::checkFromDashboard, enabled = !updates.busy && !updates.active, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Default.SystemUpdateAlt, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp))
+                Text(if (updates.busy) "Проверяем обновления…" else updates.available?.let { "Обновления Bot4VPS · $it" } ?: "Обновления Bot4VPS")
+            } }
             updates.error?.let { item { ErrorCard(it, updates::checkFromDashboard) } }
             if (updates.progress != null) item { UpdateProgress(updates, onLogin) }
         }

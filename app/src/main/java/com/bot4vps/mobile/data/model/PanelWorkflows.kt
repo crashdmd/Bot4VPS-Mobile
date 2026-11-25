@@ -9,7 +9,7 @@ object PanelWorkflows {
         return listOf("/api/setup", "/api/auth", "/api/login", "/api/logout").none { path == it || path.startsWith("$it/") }
     }
     fun views(section: String): List<PanelView> = when(section) {
-        "files" -> listOf(PanelView("docker", "Compose", "GET /api/files", mapOf("root" to "docker")), PanelView("keys", "SSH-ключи", "GET /api/files", mapOf("root" to "keys")), PanelView("scripts", "Скрипты", "GET /api/files", mapOf("root" to "scripts")))
+        "files" -> listOf(PanelView("service_archives", "Сервисы", "GET /api/files/services"), PanelView("docker", "Compose", "GET /api/files", mapOf("root" to "docker")), PanelView("keys", "SSH-ключи", "GET /api/files", mapOf("root" to "keys")), PanelView("scripts", "Скрипты", "GET /api/files", mapOf("root" to "scripts")))
         "audit" -> listOf(PanelView("records", "Действия", "GET /api/audit"), PanelView("timeline", "Хронология сервера", "GET /api/timeline/{server_id}"))
         "events" -> listOf(PanelView("events", "Журнал событий", "GET /api/events"))
         "queues" -> listOf(PanelView("queues", "Очереди серверов", "GET /api/queues"))
@@ -17,6 +17,7 @@ object PanelWorkflows {
     }
     fun actions(section: String, view: String, insideProject: Boolean = false): List<PanelAction> = when(section) {
         "files" -> when(view) {
+            "service_archives" -> emptyList()
             "docker" -> if(insideProject) listOf(PanelAction("POST /api/files/docker/files", "Создать файл"), PanelAction("POST /api/files/docker/directories", "Создать папку"), PanelAction("POST /api/files/docker/upload", "Загрузить файл")) else listOf(PanelAction("POST /api/files/docker/projects", "Создать проект"), PanelAction("POST /api/files/docker/projects/upload", "Загрузить проект ZIP"))
             "keys" -> listOf(PanelAction("POST /api/keys/create", "Создать SSH-ключ"), PanelAction("POST /api/files/upload", "Загрузить ключ"))
             else -> listOf(PanelAction("POST /api/files/create", "Создать скрипт"), PanelAction("POST /api/files/upload", "Загрузить скрипт"))

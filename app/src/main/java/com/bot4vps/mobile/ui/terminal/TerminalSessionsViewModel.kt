@@ -35,8 +35,8 @@ class TerminalSessionsViewModel @Inject constructor(
         }
     }
 
-    fun session(serverId: String): RetainedTerminalSession = sessions.getOrPut(serverId) {
-        RetainedTerminalSession(viewModelScope, { listener -> open(serverId, listener) }, SystemClock::elapsedRealtime)
+    fun session(serverId: String, gateway: Boolean = false): RetainedTerminalSession = sessions.getOrPut("${if (gateway) "gateway" else "server"}:$serverId") {
+        RetainedTerminalSession(viewModelScope, { listener -> open(serverId, gateway, listener) }, SystemClock::elapsedRealtime)
     }
 
     fun closeAll() {
@@ -44,8 +44,8 @@ class TerminalSessionsViewModel @Inject constructor(
         sessions.clear()
     }
 
-    private suspend fun open(serverId: String, listener: TerminalListener): TerminalConnection {
-        val request = Request.Builder().url(panel.url("/api/servers/${encodeSegment(serverId)}/shell/ws")).build()
+    private suspend fun open(serverId: String, gateway: Boolean, listener: TerminalListener): TerminalConnection {
+        val request = Request.Builder().url(panel.url("/api/${if (gateway) "gateways" else "servers"}/${encodeSegment(serverId)}/shell/ws")).build()
         val client = panel.httpClient(request.url)
         var socket: WebSocket? = null
         val proof = MobileWebSocketSession(viewModelScope,

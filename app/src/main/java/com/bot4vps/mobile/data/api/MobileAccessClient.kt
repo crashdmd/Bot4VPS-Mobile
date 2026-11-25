@@ -244,7 +244,8 @@ class MobileAccessClient(private val keys: MobileDeviceKeys, private val json: J
         val origin = origin(url)
         runBlocking { lockFor(origin).withLock {
             synchronized(this@MobileAccessClient) {
-                if (expectedDeviceId != null && keys.device(origin)?.id != expectedDeviceId) return@withLock
+                val storedDevice = keys.device(origin)
+                if (expectedDeviceId != null && storedDevice != null && storedDevice.id != expectedDeviceId) return@withLock
                 removeOperationKeys(origin)
                 sessions.remove(origin)
                 pinnedClients.clear()
@@ -312,10 +313,14 @@ class MobileAccessClient(private val keys: MobileDeviceKeys, private val json: J
     }
 }
 
+/** Browser assets share the existing device lease; renewal stays explicit. */
+object ReuseMobileSocketSession
+
 class MobileAccessInterceptor(private val mobile: MobileAccessClient) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val original = chain.request().newBuilder().removeHeader("X-Bot4VPS-Mobile-Session").removeHeader("Cookie").header("X-Bot4VPS-Client", "phone").build()
-        val token = mobile.session(original.url, force = original.header("Upgrade")?.equals("websocket", ignoreCase = true) == true, caller = chain.call())
+        val reuse = original.tag(ReuseMobileSocketSession::class.java) != null
+        val token = mobile.session(original.url, force = !reuse && original.header("Upgrade")?.equals("websocket", ignoreCase = true) == true, renewBeforeMillis = if (reuse) 90000 else 20000, caller = chain.call())
         val request = original.newBuilder().header("X-Bot4VPS-Mobile-Session", token).build()
         val response = chain.proceed(request)
         if (response.header("X-Bot4VPS-Mobile-Error") == "revoked") { response.close(); mobile.reportRevoked(original.url) }

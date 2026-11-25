@@ -103,7 +103,7 @@ fun AuthenticatorScreen(onBack: () -> Unit, offline: Boolean = false, onConnect:
         confirmButton = { TextButton(onClick = { remove = null; viewModel.remove(account) }) { Text("Удалить") } },
         dismissButton = { TextButton(onClick = { remove = null }) { Text("Отмена") } }) }
     draft?.let { account -> TotpAccountDialog(account, onDismiss = { draft = null }, onSave = { viewModel.add(it); draft = null }) }
-    if (showAddMenu) ModalBottomSheet(onDismissRequest = { showAddMenu = false },
+    if (showAddMenu) com.bot4vps.mobile.ui.components.PanelModalBottomSheet(onDismissRequest = { showAddMenu = false },
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 1f),
         scrimColor = Color.Black.copy(alpha = .55f)) {
         Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {

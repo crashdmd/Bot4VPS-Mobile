@@ -29,6 +29,12 @@ captures/
 /credentials.json
 /secrets.json
 
+# Private publishing helpers are kept outside the Mobile repository
+/tools/publish_release.py
+/tools/test_publish_release.py
+/mobile-release.py
+/mobile_release.py
+
 # Generated APKs; only the published artifact belongs in Git
 *.apk
 !/apk/Bot4VPS-Mobile-*-release.apk

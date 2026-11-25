@@ -411,7 +411,7 @@ def main():
     args=parser.parse_args(); web=args.repo/'ui/web'
     classes={}; aliases={}; trees={}
     for path in sorted([web/'app.py', *(web/'routers').glob('*.py')]):
-        if path.name in ('mobile_app.py', 'device_auth.py'):
+        if path.name in ('mobile_app.py', 'device_auth.py', 'gateways.py'):
             continue  # Web distribution and typed device-auth flows are not generic native operations.
         tree=ast.parse(path.read_text()); trees[path]=tree
         for n in tree.body:
@@ -475,7 +475,7 @@ def main():
                 if not isinstance(dec,ast.Call) or not isinstance(dec.func,ast.Attribute) or dec.func.attr not in ('get','post','put','patch','delete'):continue
                 if not dec.args or not isinstance(dec.args[0],ast.Constant):continue
                 url=prefixes.get(ast.unparse(dec.func.value),'')+dec.args[0].value
-                if not url.startswith('/api/') or url in ('/api/stream','/api/routes','/api/ping','/api/upd/health'):continue
+                if not url.startswith('/api/') or url in ('/api/stream','/api/routes','/api/ping','/api/upd/health','/api/service-projects'):continue
                 if url.startswith('/api/login') or url in ('/api/me','/api/logout'):continue
                 # Sensitive proof protocol is handled by the dedicated viewer.
                 if url.startswith('/api/masterkey/phone/'):continue

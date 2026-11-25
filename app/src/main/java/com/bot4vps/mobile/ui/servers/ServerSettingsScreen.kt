@@ -64,7 +64,7 @@ fun ServerSettingsScreen(onBack: () -> Unit, viewModel: ServerSettingsViewModel 
     state.action?.takeIf { it.showDialog }?.let { action -> SettingActionDialog(action, state, viewModel) }
     state.list?.let { list -> SettingListSheet(list, state, viewModel) }
     state.editor?.let { SettingEditorSheet(it, state, viewModel) }
-    if (showOutput) ModalBottomSheet(onDismissRequest = { showOutput = false }) {
+    if (showOutput) com.bot4vps.mobile.ui.components.PanelModalBottomSheet(onDismissRequest = { showOutput = false }) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp)) {
             Text("Вывод операции", style = MaterialTheme.typography.titleLarge)
             SelectionContainer { Text(state.output.orEmpty(), Modifier.padding(vertical = 16.dp), fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall) }
@@ -386,7 +386,7 @@ private fun SettingActionDialog(action: SettingAction, state: ServerSettingsStat
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SettingListSheet(list: SettingList, state: ServerSettingsState, viewModel: ServerSettingsViewModel) {
-    ModalBottomSheet(onDismissRequest = viewModel::closeList) {
+    com.bot4vps.mobile.ui.components.PanelModalBottomSheet(onDismissRequest = viewModel::closeList) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
             Text(list.title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(bottom = 16.dp))
             if (list.loading) CircularProgressIndicator(Modifier.size(24.dp))
@@ -449,7 +449,7 @@ private fun SettingEditorSheet(file: SettingEditor, state: ServerSettingsState, 
     if (discardFile) PanelAlertDialog(onDismissRequest = { discardFile = false }, title = { Text("Отменить изменения файла?") },
         text = { Text("Несохранённый текст будет потерян.") }, confirmButton = { TextButton(onClick = { discardFile = false; viewModel.closeEditor() }) { Text("Отменить изменения") } },
         dismissButton = { TextButton(onClick = { discardFile = false }) { Text("Продолжить редактирование") } })
-    ModalBottomSheet(onDismissRequest = ::close) {
+    com.bot4vps.mobile.ui.components.PanelModalBottomSheet(onDismissRequest = ::close) {
         Column(Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(if (file.create) "Новый файл конфигурации" else file.filename, style = MaterialTheme.typography.titleLarge)
             if (file.create) {

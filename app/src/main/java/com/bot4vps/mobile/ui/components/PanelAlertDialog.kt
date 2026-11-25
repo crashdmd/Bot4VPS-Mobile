@@ -18,10 +18,10 @@ fun PanelAlertDialog(
     icon: @Composable (() -> Unit)? = null,
     title: @Composable (() -> Unit)? = null,
     text: @Composable (() -> Unit)? = null,
-    properties: DialogProperties = DialogProperties()
+    properties: DialogProperties = DialogProperties(dismissOnClickOutside = false, )
 ) {
     AlertDialog(onDismissRequest = onDismissRequest, modifier = modifier, icon = icon, title = title,
-        text = text, properties = properties, confirmButton = {
+        text = text, properties = DialogProperties(dismissOnBackPress = properties.dismissOnBackPress, dismissOnClickOutside = false, securePolicy = properties.securePolicy, usePlatformDefaultWidth = properties.usePlatformDefaultWidth, decorFitsSystemWindows = properties.decorFitsSystemWindows), confirmButton = {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) { confirmButton() }
                 if (dismissButton != null) {

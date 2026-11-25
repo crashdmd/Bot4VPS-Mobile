@@ -83,6 +83,7 @@ fun ServicesScreen(onServer: (ServiceKind, String) -> Unit, onFiles: () -> Unit,
     }) { padding ->
         Refreshable(state.loading, viewModel::refresh, Modifier.fillMaxSize().padding(padding), enabled = kind != null) {
         LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(16.dp), verticalArrangement = refreshArrangement(12.dp)) {
+            if (kind == ServiceKind.XUI) item { PanelCard { ServiceProjectInfo("3x-ui", title = true) } }
             if (kind == null) {
                 item { Text("Выберите, с чем работать", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold) }
                 item { Text("Управление сервисами на ваших серверах", color = MaterialTheme.colorScheme.onSurfaceVariant) }

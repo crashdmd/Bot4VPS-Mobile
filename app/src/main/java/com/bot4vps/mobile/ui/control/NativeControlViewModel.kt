@@ -321,6 +321,7 @@ class NativeControlViewModel @Inject constructor(
         }
     }
     fun execute(destination: Uri? = null) {
+        if (section == "files" && _state.value.selectedView == "service_archives") return
         if (_state.value.busy || _state.value.loading || _state.value.connection != null || _state.value.prefillFailed || !validate()) return
         if (_state.value.restoreOperationId != null && _state.value.preparedRestoreId == null) {
             job = viewModelScope.launch {

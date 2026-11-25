@@ -45,6 +45,14 @@ class SessionCookieJar @Inject constructor(private val secrets: SecretStorage) :
         .filter { it.expiresAt > System.currentTimeMillis() && it.matches(url) }
 
     @Synchronized
+    fun remove(base: String) {
+        val address = PanelUrl.endpoint(base, "/api/me")
+        val stored = entries()
+        stored.removeAll { it.origin == origin(address) }
+        secrets.write(codec.encodeToString(stored))
+    }
+
+    @Synchronized
     fun clear() {
         records = mutableListOf()
         secrets.write(null)

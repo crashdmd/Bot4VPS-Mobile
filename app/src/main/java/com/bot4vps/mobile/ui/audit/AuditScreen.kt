@@ -35,7 +35,7 @@ fun AuditScreen(onBack: () -> Unit, onTask: (String) -> Unit, onGraph: (String,L
     var to by remember { mutableStateOf<Long?>(null) }
     calendar?.let { boundary ->
         val date = rememberDatePickerState()
-        DatePickerDialog(onDismissRequest={ calendar=null }, confirmButton={ TextButton(enabled=date.selectedDateMillis!=null,onClick={
+        DatePickerDialog(properties = androidx.compose.ui.window.DialogProperties(dismissOnClickOutside = false), onDismissRequest={ calendar=null }, confirmButton={ TextButton(enabled=date.selectedDateMillis!=null,onClick={
             date.selectedDateMillis?.let { millis ->
                 val day=Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate()
                 val stamp=if(boundary=="from") day.atStartOfDay(ZoneId.systemDefault()).toEpochSecond()

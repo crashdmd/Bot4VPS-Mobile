@@ -3,6 +3,8 @@ package com.bot4vps.mobile.ui.components
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -52,9 +54,10 @@ fun PanelCard(title: String? = null, modifier: Modifier = Modifier, content: @Co
 }
 
 @Composable
-fun ActionRow(title: String, subtitle: String, icon: ImageVector, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, danger: Boolean = false, iconColor: Color? = null) {
+@OptIn(ExperimentalFoundationApi::class)
+fun ActionRow(title: String, subtitle: String, icon: ImageVector, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, danger: Boolean = false, iconColor: Color? = null, onLongClick: (() -> Unit)? = null) {
     val color = if (!enabled) MaterialTheme.colorScheme.onSurfaceVariant else if (danger) MaterialTheme.colorScheme.error else iconColor ?: MaterialTheme.colorScheme.primary
-    PanelSurfaceCard(onClick = onClick, enabled = enabled, modifier = modifier.fillMaxWidth()) {
+    PanelSurfaceCard(modifier = modifier.fillMaxWidth().combinedClickable(enabled = enabled, onClick = onClick, onLongClick = onLongClick, onLongClickLabel = if (onLongClick != null) "Удалить подключение" else null)) {
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Icon(icon, null, Modifier.size(20.dp), tint = color.copy(alpha = if (enabled) 1f else .4f))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
