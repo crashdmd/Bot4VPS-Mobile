@@ -129,6 +129,7 @@ fun GatewayDetailScreen(id: String, onBack: () -> Unit, onTerminal: (String) -> 
         when (formAction) {
             "access" -> vm.saveAccess(data)
             "ssh" -> vm.saveSsh(data)
+            "root-password" -> vm.saveRootPassword(data)
             else -> vm.networkPlan(formAction, data)
         }
     } }
@@ -139,6 +140,15 @@ fun GatewayDetailScreen(id: String, onBack: () -> Unit, onTerminal: (String) -> 
         IconButton(enabled = node != null && !vm.busy, onClick = vm::deletion) { Icon(Icons.Default.DeleteOutline, "Удалить шлюз", tint = MaterialTheme.colorScheme.error) }
     }) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
+            if (node != null && vm.rootPasswordConfigured == false) {
+                Surface(color = MaterialTheme.colorScheme.tertiaryContainer, shape = MaterialTheme.shapes.small,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+                    Row(Modifier.padding(start = 12.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Пароль root не задан", Modifier.weight(1f), color = MaterialTheme.colorScheme.onTertiaryContainer)
+                        TextButton(onClick = { vm.selectPage("access") }, enabled = !vm.busy) { Text("Открыть «Доступ»") }
+                    }
+                }
+            }
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 listOf("overview" to "Обзор", "network" to "Сеть", "wireless" to "Wi-Fi", "services" to "Сервисы", "packages" to "Пакеты", "backups" to "Копии", "logs" to "Журнал", "access" to "Доступ").forEach { (page, label) ->
                     FilterChip(selected = vm.page == page, onClick = { vm.selectPage(page) }, enabled = !vm.busy && vm.review == null, label = { Text(label) })
@@ -155,7 +165,9 @@ fun GatewayDetailScreen(id: String, onBack: () -> Unit, onTerminal: (String) -> 
                         when (vm.page) {
                             "overview" -> {
                                 item(key = "gateway-overview") { GatewayOverview(node, vm, onTerminal, { browserService = "luci" }) }
-                                item(key = "gateway-traffic") { GatewayTraffic(vm.traffic, node.monitor, vm.period, vm::trafficPeriod) }
+                                item(key = "gateway-traffic") {
+                                    GatewayTraffic(vm.traffic, node.monitor, vm.period, vm.hasQuarterHourTraffic, vm::trafficPeriod)
+                                }
                                 item(key = "gateway-clients") { GatewayClients(node.monitor) }
                                 item(key = "gateway-wireguard") { GatewayWireguard(node.monitor) }
                             }
@@ -217,10 +229,16 @@ fun GatewayDetailScreen(id: String, onBack: () -> Unit, onTerminal: (String) -> 
                                 if (vm.content.objects("items").isEmpty()) item { Text("Сохранённых копий пока нет", color = MaterialTheme.colorScheme.onSurfaceVariant) }
                             }
                             "logs" -> item { PanelCard("Журнал шлюза") { SelectionContainer { Text(vm.content.text("output") ?: "Журнал пуст", style = MaterialTheme.typography.bodySmall) } } }
-                            "access" -> item { PanelCard("Доступ") {
+                            "access" -> item { PanelCard("Доступ к шлюзу") {
                                 InfoRow("API", node.raw.text("api_url").orEmpty()); InfoRow("Учётная запись", node.raw.text("api_username").orEmpty()); InfoRow("Режим", if (node.raw.flag("managed")) "Управляемый" else "Ручной")
                                 node.raw.text("tls_sha256")?.let { SelectionContainer { Text("SHA-256: $it", style = MaterialTheme.typography.bodySmall) } }
                                 FlowActions(listOf("Настроить API" to { edit(gatewayAccessForm(node), "access") }, "SSH-доступ" to { vm.loadKeys { keys -> edit(gatewaySshForm(node, keys), "ssh") } }), !vm.busy)
+                                val rootSsh = node.raw.flag("ssh_configured") && node.raw.text("ssh_user") == "root"
+                                PanelSecondaryButton(onClick = { edit(gatewayRootPasswordForm(vm.rootPasswordConfigured), "root-password") },
+                                    enabled = !vm.busy && rootSsh) {
+                                    Text(if (vm.rootPasswordConfigured == false) "Задать пароль root" else "Сменить пароль root")
+                                }
+                                if (!rootSsh) Text("Для смены пароля сохраните SSH-доступ под root.", style = MaterialTheme.typography.bodySmall)
                                 PanelButton(onClick = vm::integration, enabled = !vm.busy && node.raw.flag("ssh_configured") && node.raw.flag("managed")) { Text(if (node.raw.flag("deletion_pending")) "Восстановить отозванный API через root SSH" else "Обновить интеграцию Bot4VPS") }
                                 PanelSecondaryButton(onClick = { vm.backupPlan("reboot") }, enabled = node.controls && !vm.busy) { Text("Перезагрузить шлюз") }
                             } }
@@ -276,10 +294,15 @@ private fun GatewayOverview(node: Gateway, vm: GatewayViewModel, onTerminal: (St
 }
 
 @Composable
-private fun GatewayTraffic(history: List<JsonObject>, monitor: JsonObject, period: Int, change: (Int) -> Unit) {
+private fun GatewayTraffic(
+    history: List<JsonObject>, monitor: JsonObject, period: Int, hasQuarterHour: Boolean, change: (Int) -> Unit,
+) {
     PanelCard("Трафик") {
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            listOf(3600 to "1 ч", 21600 to "6 ч", 43200 to "12 ч", 86400 to "24 ч").forEach { (seconds, title) -> FilterChip(period == seconds, { change(seconds) }, label = { Text(title) }) }
+            if (hasQuarterHour) FilterChip(period == 900, { change(900) }, label = { Text("15 мин") })
+            listOf(3600 to "1 ч", 21600 to "6 ч", 43200 to "12 ч", 86400 to "24 ч").forEach { (seconds, title) ->
+                FilterChip(period == seconds, { change(seconds) }, label = { Text(title) })
+            }
         }
         listOf("wan" to "WAN", "lan" to "LAN").forEach { (role, title) ->
             val current = (monitor["traffic"] as? JsonObject)?.get(role) as? JsonObject
@@ -522,6 +545,7 @@ fun GatewayAddScreen(onBack: () -> Unit, onAdded: (String) -> Unit, onHistory: (
         Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             val board = draft["board"] as? JsonObject
             InfoRow("Модель", board?.text("model").orEmpty())
+            if (board?.text("root_password_configured") == "false") Text("Пароль root не задан. После подключения задайте его во вкладке «Доступ».")
             draft.strings("changes").forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
             if (draft.strings("missing_packages").isNotEmpty()) Text("Будут установлены: ${draft.strings("missing_packages").joinToString(", ")}")
             TextButton(onClick = { instructions = !instructions }) { Text("Ручная настройка") }

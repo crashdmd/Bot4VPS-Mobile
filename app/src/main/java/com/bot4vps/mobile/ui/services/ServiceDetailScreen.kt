@@ -280,19 +280,19 @@ private fun ComposeProjectCard(project: JsonObject, accessible: Boolean, vm: Ser
 private fun XuiOverview(data: JsonObject, vm: ServiceDetailViewModel, operation: (String, Map<String, JsonElement>) -> Unit) {
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
-    var openPanel by remember { mutableStateOf(false) }
     val url = data.text("panel_url")?.takeIf { it.startsWith("https://") || it.startsWith("http://") }
-    if (openPanel && url != null) {
-        val state by vm.state.collectAsStateWithLifecycle()
-        state.detail?.server?.id?.let { id -> com.bot4vps.mobile.ui.browser.ServiceBrowserDialog(id, "3x-ui", { openPanel = false }) }
-    }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         PanelCard("Доступ к панели") {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 if (url != null) {
-                    TextButton(onClick = { openPanel = true }, modifier = Modifier.weight(1f), contentPadding = PaddingValues(0.dp)) {
+                    TextButton(onClick = {
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE)
+                        runCatching { context.startActivity(intent) }.onFailure {
+                            Toast.makeText(context, "Не удалось открыть 3x-ui в браузере", Toast.LENGTH_SHORT).show()
+                        }
+                    }, modifier = Modifier.weight(1f), contentPadding = PaddingValues(0.dp)) {
                         Text(url, modifier = Modifier.weight(1f))
-                        Icon(Icons.Default.OpenInNew, "Открыть панель", Modifier.padding(start = 6.dp).size(18.dp))
+                        Icon(Icons.Default.OpenInNew, "Открыть в браузере", Modifier.padding(start = 6.dp).size(18.dp))
                     }
                     IconButton(onClick = { clipboard.setText(AnnotatedString(url)); Toast.makeText(context, "Адрес скопирован", Toast.LENGTH_SHORT).show() }) {
                         Icon(Icons.Default.ContentCopy, "Копировать адрес", Modifier.size(18.dp))

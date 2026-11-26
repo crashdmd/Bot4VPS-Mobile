@@ -132,7 +132,7 @@ private fun LegacyPasswordEntry(manager: AppLockManager, state: AppLockState, pa
     Spacer(Modifier.height(24.dp))
     val enabled = !state.busy && remaining == 0L && !state.needsPinSetup
     fun submit() { if (enabled && password.isNotEmpty()) manager.unlock(password) }
-    OutlinedTextField(password, { if (it.length <= 256) { onPassword(it); manager.clearError() } },
+    com.bot4vps.mobile.ui.components.PanelTextField(password, { if (it.length <= 256) { onPassword(it); manager.clearError() } },
         modifier = Modifier.fillMaxWidth().focusRequester(focus), label = { Text("Пароль предыдущей версии") }, singleLine = true,
         visualTransformation = PasswordVisualTransformation(),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),

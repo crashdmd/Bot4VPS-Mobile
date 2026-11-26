@@ -24,25 +24,26 @@ private fun initialValues(fields: List<GatewayField>, value: JsonObject): Map<St
 
 @Composable
 fun GatewayFields(fields: List<GatewayField>, values: Map<String, String>, enabled: Boolean, change: (String, String) -> Unit) {
-    fields.filter { it.visible(values) }.forEach { field ->
+    fields.filter { it.visible(values) }.forEach { field -> key(field.key) {
         val value = values[field.key] ?: field.initial
         if (field.toggle) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) { Text(field.label); if (field.hint.isNotBlank()) Text(field.hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             Switch(value == "1", { change(field.key, if (it) "1" else "0") }, enabled = enabled && !field.locked)
         } else if (field.choices.isNotEmpty()) {
             var choose by remember { mutableStateOf(false) }
-            PanelSecondaryButton(onClick = { choose = true }, enabled = enabled && !field.locked, modifier = Modifier.fillMaxWidth()) { Text("${field.label}: ${gatewayChoiceLabel(value)}") }
+            fun choiceLabel(option: String) = if (field.key == "auth_type" && option == "none") "Без пароля (первый вход root)" else gatewayChoiceLabel(option)
+            PanelSecondaryButton(onClick = { choose = true }, enabled = enabled && !field.locked, modifier = Modifier.fillMaxWidth()) { Text("${field.label}: ${choiceLabel(value)}") }
             if (choose) PanelAlertDialog(onDismissRequest = { choose = false }, title = { Text(field.label) }, text = {
                 Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
-                    field.choices.forEach { option -> TextButton(onClick = { change(field.key, option); choose = false }, modifier = Modifier.fillMaxWidth()) { Text(gatewayChoiceLabel(option)) } }
+                    field.choices.forEach { option -> TextButton(onClick = { change(field.key, option); choose = false }, modifier = Modifier.fillMaxWidth()) { Text(choiceLabel(option)) } }
                 }
             }, confirmButton = {}, dismissButton = { TextButton(onClick = { choose = false }) { Text("Закрыть") } })
-        } else OutlinedTextField(value, { change(field.key, it) }, label = { Text(field.label) }, enabled = enabled && !field.locked,
+        } else PanelTextField(value, { change(field.key, it) }, label = { Text(field.label) }, enabled = enabled && !field.locked,
             modifier = Modifier.fillMaxWidth(), singleLine = !field.multiline,
             minLines = if (field.multiline) 2 else 1, maxLines = if (field.multiline) 5 else 1,
             visualTransformation = if (field.secret) PasswordVisualTransformation() else VisualTransformation.None,
             supportingText = if (field.hint.isNotBlank()) ({ Text(field.hint) }) else null)
-    }
+    } }
 }
 
 @Composable
@@ -83,7 +84,7 @@ fun GatewayFormDialog(form: GatewayForm, busy: Boolean, error: String?, onDismis
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     PanelButton(onClick = {
-                        val missing = form.fields.firstOrNull { it.required && it.visible(values) && values[it.key].isNullOrBlank() }
+                        val missing = form.fields.firstOrNull { it.required && it.visible(values) && (if (it.secret) values[it.key].isNullOrEmpty() else values[it.key].isNullOrBlank()) }
                             ?: form.groups.filter { it.visible(values) }.firstNotNullOfOrNull { group -> groups[group.key].orEmpty().firstNotNullOfOrNull { row -> group.fields.firstOrNull { it.required && it.visible(row) && row[it.key].isNullOrBlank() } } }
                         if (missing != null) validation = "Заполните поле «${missing.label}»"
                         else try { onSubmit(form.result(values, groups)) } catch (e: Exception) { validation = e.message }
@@ -107,15 +108,35 @@ fun gatewaySshForm(node: Gateway? = null, keys: List<String> = emptyList(), add:
         put("user", raw.text("ssh_user") ?: "root"); put("port", raw.text("ssh_port") ?: "22"); put("auth_type", raw.text("ssh_auth_type") ?: "password")
     }
     val fields = (if (add) listOf(field("name", "Имя шлюза"), field("host", "Адрес роутера", required = true, hint = "192.168.1.1")) else emptyList()) + listOf(
-        field("user", "Пользователь SSH", "root", required = true), field("port", "Порт SSH", "22", required = true), choices("auth_type", "Авторизация", listOf("password", "key")),
-        field("password", "Пароль SSH", secret = true, hint = if (node != null) "Пусто — сохранить прежний пароль" else "", visible = { it["auth_type"] == "password" }),
+        field("user", "Пользователь SSH", "root", required = true), field("port", "Порт SSH", "22", required = true), choices("auth_type", "Авторизация", listOf("password", "key", "none")),
+        field("password", "Пароль SSH", secret = true, hint = if (add) "Оставьте пустым, если пароль root ещё не задан" else if (raw.text("ssh_auth_type") == "password" && raw.flag("ssh_configured")) "Пусто — сохранить прежний пароль" else "", visible = { it["auth_type"] == "password" }),
         field("key_path", "SSH-ключ панели", choices = keys, required = true, visible = { it["auth_type"] == "key" }))
     return GatewayForm(if (add) "Подключить шлюз по SSH" else "SSH-доступ", fields, initial, hint = "Панель проверит OpenWrt перед сохранением доступа. SSH нужен для консоли и первоначальной настройки.", submit = if (add) "Проверить" else "Проверить и сохранить", result = { values, _ ->
         require(values["port"]?.toIntOrNull() in 1..65535) { "Порт должен быть от 1 до 65535" }
-        if (node == null && values["auth_type"] == "password") require(!values["password"].isNullOrBlank()) { "Введите пароль SSH" }
+        if (values["auth_type"] == "none") require(values["user"] == "root") { "Вход без пароля доступен только для root OpenWrt" }
+        if (add && values["user"] != "root" && values["auth_type"] == "password") require(!values["password"].isNullOrEmpty()) { "Введите пароль SSH" }
         val names = listOf("user", "auth_type", "password", "key_path") + if (add) listOf("name", "host") else emptyList()
         JsonObject(gatewayFields(values, names, secrets = setOf("password", "key_path")) + ("port" to JsonPrimitive(values.getValue("port").toInt())) + if (add) mapOf("name" to JsonPrimitive(values["name"].orEmpty())) else emptyMap())
     })
+}
+
+fun gatewayRootPasswordForm(configured: Boolean?) = GatewayForm(
+    if (configured == false) "Задать пароль root" else "Сменить пароль root",
+    buildList {
+        if (configured != false) add(field("current_password", "Текущий пароль", required = true, secret = true))
+        add(field("password", "Новый пароль", required = true, secret = true))
+        add(field("confirmation", "Повторите пароль", required = true, secret = true))
+    },
+    submit = "Сохранить"
+) { values, _ ->
+    require(values["password"] == values["confirmation"]) { "Пароли не совпадают" }
+    require(!values["password"].isNullOrBlank()) { "Введите новый пароль" }
+    if (configured != false) require(!values["current_password"].isNullOrEmpty()) { "Введите текущий пароль root" }
+    buildJsonObject {
+        if (configured != false) put("current_password", values.getValue("current_password"))
+        put("password", values.getValue("password"))
+        put("confirmation", values.getValue("confirmation"))
+    }
 }
 
 fun gatewayAccessForm(node: Gateway? = null) = GatewayForm(if (node == null) "Подключить через API" else "Доступ к API", listOf(

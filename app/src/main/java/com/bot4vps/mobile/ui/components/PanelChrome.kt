@@ -7,13 +7,15 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Brush
@@ -22,6 +24,8 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.bot4vps.mobile.ui.theme.LocalPanelPalette
@@ -167,11 +171,24 @@ fun PanelTextField(
     shape: Shape = RoundedCornerShape(8.dp)
 ) {
     val field = LocalPanelPalette.current.field
+    val masked = visualTransformation is PasswordVisualTransformation
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(value.isEmpty()) { if (value.isEmpty()) visible = false }
+    val toggle: (@Composable () -> Unit)? = if (masked && trailingIcon == null) {
+        {
+            IconButton(onClick = { visible = !visible }, enabled = enabled) {
+                Icon(if (visible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                    if (visible) "Скрыть введённое" else "Показать введённое")
+            }
+        }
+    } else trailingIcon
     OutlinedTextField(value = value, onValueChange = onValueChange, modifier = modifier,
         enabled = enabled, readOnly = readOnly, textStyle = textStyle, label = label,
-        placeholder = placeholder, leadingIcon = leadingIcon, trailingIcon = trailingIcon,
-        supportingText = supportingText, isError = isError, visualTransformation = visualTransformation,
-        keyboardOptions = keyboardOptions, keyboardActions = keyboardActions, singleLine = singleLine,
+        placeholder = placeholder, leadingIcon = leadingIcon, trailingIcon = toggle,
+        supportingText = supportingText, isError = isError,
+        visualTransformation = if (masked && visible && trailingIcon == null) VisualTransformation.None else visualTransformation,
+        keyboardOptions = if (masked && keyboardOptions == KeyboardOptions.Default) KeyboardOptions(keyboardType = KeyboardType.Password) else keyboardOptions,
+        keyboardActions = keyboardActions, singleLine = singleLine,
         maxLines = maxLines, minLines = minLines, interactionSource = interactionSource, shape = shape,
         colors = OutlinedTextFieldDefaults.colors(
             focusedContainerColor = field, unfocusedContainerColor = field,

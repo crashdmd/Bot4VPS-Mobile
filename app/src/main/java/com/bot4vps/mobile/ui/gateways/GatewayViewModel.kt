@@ -19,10 +19,17 @@ class GatewayViewModel @Inject constructor(val repository: GatewayRepository, pr
     val inventory = repository.inventory
     val reserveState = serviceArchives.state
     var node by mutableStateOf<Gateway?>(null); private set
+    private var rootStatus by mutableStateOf<Pair<String, Boolean?>?>(null)
+    val rootPasswordConfigured: Boolean?
+        get() {
+            val observed = rootStatus
+            return if (observed != null && observed.first == node?.id) observed.second else node?.raw?.text("root_password_configured")?.toBooleanStrictOrNull()
+        }
     var page by mutableStateOf("overview"); private set
     var content by mutableStateOf(JsonObject(emptyMap())); private set
     var traffic by mutableStateOf(emptyList<JsonObject>()); private set
     var period by mutableIntStateOf(3600); private set
+    var hasQuarterHourTraffic by mutableStateOf(false); private set
     var busy by mutableStateOf(false); private set
     var error by mutableStateOf<String?>(null); private set
     var notice by mutableStateOf<String?>(null); private set
@@ -56,10 +63,25 @@ class GatewayViewModel @Inject constructor(val repository: GatewayRepository, pr
     fun open(id: String?) {
         if (selected == id) return
         pageJob?.cancel(); taskJob?.cancel(); selected = id; node = null; content = JsonObject(emptyMap()); task = null; taskMissing = false; page = "overview"
+        traffic = emptyList()
+        hasQuarterHourTraffic = false
+        if (period == 900) period = 3600
         refresh()
     }
-    fun refresh() = act { repository.refresh(); if (selected != null && inventory.value.enabled) { loadNode(); loadPage() } }
+    fun refresh() = act { repository.refresh(); if (selected != null && inventory.value.enabled) { loadNode(); loadPage(); loadRootPasswordStatus() } }
     private suspend fun loadNode() { node = Gateway(call("GET", base)) }
+    private suspend fun loadRootPasswordStatus() {
+        val gateway = node ?: return
+        if (gateway.raw.text("ssh_user") != "root" || !gateway.raw.flag("ssh_configured")) return
+        try {
+            val configured = call("GET", "$base/root-password").text("configured")?.toBooleanStrictOrNull()
+            if (selected == gateway.id) rootStatus = gateway.id to configured
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // Older panels do not provide a dedicated root password endpoint.
+        }
+    }
     private suspend fun loadServiceUpdates(background: Boolean): JsonObject {
         if (!background) checkingServiceUpdates = true
         return try { call("GET", "$base/service-updates") } finally { if (!background) checkingServiceUpdates = false }
@@ -72,6 +94,7 @@ class GatewayViewModel @Inject constructor(val repository: GatewayRepository, pr
             else -> JsonObject(emptyMap())
         }
         if (page == "overview") loadTraffic()
+        if (page == "access" && rootStatus?.first != node?.id) loadRootPasswordStatus()
 
     }
     fun selectPage(value: String) {
@@ -82,7 +105,15 @@ class GatewayViewModel @Inject constructor(val repository: GatewayRepository, pr
         }
     }
     fun trafficPeriod(seconds: Int) = act { period = seconds; loadTraffic() }
-    private suspend fun loadTraffic() { traffic = call("GET", "$base/traffic", query = mapOf("seconds" to listOf(period.toString()))).objects("traffic_history") }
+    private suspend fun loadTraffic() {
+        val gatewayId = selected ?: return
+        val seconds = period
+        val result = call("GET", "$base/traffic", query = mapOf("seconds" to listOf(seconds.toString())))
+        if (selected != gatewayId || period != seconds) return
+        traffic = result.objects("traffic_history")
+        hasQuarterHourTraffic = (result["available_periods"] as? JsonArray)
+            ?.any { (it as? JsonPrimitive)?.intOrNull == 900 } == true
+    }
     suspend fun observe() {
         repository.refresh()
         while (true) {
@@ -164,7 +195,18 @@ class GatewayViewModel @Inject constructor(val repository: GatewayRepository, pr
             review = GatewayReview("Изменить доверие к сертификату?", buildJsonObject { put("warnings", JsonArray(listOf(JsonPrimitive("Прежний SHA-256: $old"), JsonPrimitive("Новый SHA-256: ${next.ifBlank { "системное доверие" }}")))) }, "$base/credentials", method = "PUT", body = JsonObject(body + ("tls_pin_confirmed" to JsonPrimitive(true))))
         } else { node = Gateway(call("PUT", "$base/credentials", body)); notice = "Доступ сохранён" }
     }
-    fun saveSsh(body: JsonObject) = act { node = Gateway(call("PUT", "$base/ssh", body)); notice = "SSH проверен и сохранён" }
+    fun saveSsh(body: JsonObject) = act {
+        val updated = Gateway(call("PUT", "$base/ssh", body))
+        rootStatus = updated.id to updated.raw.text("root_password_configured")?.toBooleanStrictOrNull()
+        node = updated
+        notice = "SSH проверен и сохранён"
+    }
+    fun saveRootPassword(body: JsonObject) = act {
+        val updated = Gateway(call("PUT", "$base/root-password", body))
+        node = updated
+        rootStatus = updated.id to updated.raw.text("root_password_configured")?.toBooleanStrictOrNull()
+        notice = if (updated.raw.text("ssh_auth_type") == "key") "Пароль root изменён. Консоль подключается по SSH-ключу." else "Пароль root и SSH для консоли обновлены."
+    }
     fun loadKeys(onLoaded: (List<String>) -> Unit) = act { onLoaded(call("GET", "/api/keys").objects("keys").mapNotNull { it.text("name") ?: it.text("filename") }) }
     fun probe(body: JsonObject) = act {
         val response = call("POST", "/api/gateways/probe", body)

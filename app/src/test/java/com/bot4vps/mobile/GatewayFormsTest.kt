@@ -101,6 +101,22 @@ class GatewayFormsTest {
         assertEquals(22, data["port"]?.jsonPrimitive?.int); assertEquals("key", data.text("auth_type")); assertEquals("router.key", data.text("key_path"))
         assertEquals(JsonPrimitive(""), data["name"])
     }
+    @Test fun newRootSshGatewayMayLeavePasswordEmpty() {
+        val form = gatewaySshForm(add = true)
+        val input = values(form) + ("host" to "192.168.1.1")
+        assertFalse(form.result(input, emptyMap()).containsKey("password"))
+        assertTrue(runCatching { form.result(input + ("user" to "other"), emptyMap()) }.isFailure)
+    }
+    @Test fun rootPasswordChangeRequiresCurrentAndMatchingConfirmation() {
+        val first = gatewayRootPasswordForm(false)
+        val change = gatewayRootPasswordForm(true)
+        val input = mapOf("password" to "new password", "confirmation" to "new password")
+        assertFalse(first.result(input, emptyMap()).containsKey("current_password"))
+        assertTrue(runCatching { change.result(input, emptyMap()) }.isFailure)
+        assertTrue(runCatching { first.result(input + ("confirmation" to "wrong"), emptyMap()) }.isFailure)
+        val request = change.result(input + ("current_password" to " old password "), emptyMap())
+        assertEquals(" old password ", request.text("current_password"))
+    }
     @Test fun firewallRedirectChangesPreserveOtherNatSectionsAndCarryBothProtocols() {
         val form = gatewayFirewallForm(config("""{"firewall":{"defaults":{},"zones":[],"rules":[],"redirects":[{"id":"old","target":"DNAT","src_dport":"443","dest_ip":"192.168.1.10"},{"id":"special","target":"SNAT"}]}}"""))
         assertEquals(listOf("old"), form.groups.first { it.key == "redirects" }.rows.map { it.text("id") })
