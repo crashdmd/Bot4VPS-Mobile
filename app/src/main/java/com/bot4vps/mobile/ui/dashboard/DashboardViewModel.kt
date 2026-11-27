@@ -30,6 +30,26 @@ class DashboardViewModel @Inject constructor(private val panel: NativePanelClien
     private var pingRequest: Job? = null
     init { refresh() }
     fun refresh() = refresh(true, measurePings = false)
+
+    fun markEventRead(event: JsonObject, onRead: (String) -> Unit) {
+        val id = event.text("id") ?: return
+        viewModelScope.launch {
+            if (!event.flag("read")) {
+                try {
+                    panel.checkedObject("POST", "/api/events/mark-read", buildJsonObject { put("event_id", id) })
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    return@launch
+                }
+                _state.update { current -> current.copy(events = current.events.map { row ->
+                    if (row.text("id") == id) JsonObject(row + ("read" to JsonPrimitive(true))) else row
+                }) }
+            }
+            onRead(id)
+        }
+    }
+
     private fun refresh(reselect: Boolean, measurePings: Boolean = true) {
         if (request?.isActive == true) return
         request = viewModelScope.launch {

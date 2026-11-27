@@ -152,12 +152,14 @@ internal class ServiceBrowserProxy(val target: BrowserTarget, private val awaitG
             upstreamOutput.write("$method $path HTTP/1.1\r\nHost: ${target.origin.substringAfter("://")}\r\nConnection: Upgrade\r\n".toByteArray())
             headers.forEach { (name, value) -> upstreamOutput.write("$name: $value\r\n".toByteArray(Charsets.ISO_8859_1)) }
             upstreamOutput.write("\r\n".toByteArray()); upstreamOutput.flush()
+            remote.soTimeout = 60000
             val upstreamInput = remote.getInputStream().buffered()
             val response = readHead(upstreamInput)
             output.write("${response.first}\r\n".toByteArray())
             response.second.forEach { (name, value) -> output.write("$name: ${local(value)}\r\n".toByteArray(Charsets.ISO_8859_1)) }
             output.write("\r\n".toByteArray()); output.flush()
             if (!response.first.startsWith("HTTP/1.1 101")) return
+            remote.soTimeout = 0
             localSocket.soTimeout = 0
             val incoming = scope.launch {
                 try { val buffer = ByteArray(32768); while (true) { val count = upstreamInput.read(buffer); if (count < 0) break; output.write(buffer, 0, count); output.flush() } } finally { runCatching { localSocket.close() } }

@@ -14,6 +14,9 @@ import javax.inject.Inject
 
 data class GatewayReview(val title: String, val data: JsonObject, val applyPath: String, val cancelPath: String? = null, val method: String = "POST", val body: JsonObject? = null)
 
+private const val QUARTER_HOUR = 15 * 60
+private const val ONE_HOUR = 60 * 60
+
 @HiltViewModel
 class GatewayViewModel @Inject constructor(val repository: GatewayRepository, private val serviceArchives: com.bot4vps.mobile.data.repository.ServiceArchivesRepository) : ViewModel() {
     val inventory = repository.inventory
@@ -28,7 +31,7 @@ class GatewayViewModel @Inject constructor(val repository: GatewayRepository, pr
     var page by mutableStateOf("overview"); private set
     var content by mutableStateOf(JsonObject(emptyMap())); private set
     var traffic by mutableStateOf(emptyList<JsonObject>()); private set
-    var period by mutableIntStateOf(3600); private set
+    var period by mutableIntStateOf(QUARTER_HOUR); private set
     var hasQuarterHourTraffic by mutableStateOf(false); private set
     var busy by mutableStateOf(false); private set
     var error by mutableStateOf<String?>(null); private set
@@ -40,6 +43,9 @@ class GatewayViewModel @Inject constructor(val repository: GatewayRepository, pr
     var catalog by mutableStateOf<JsonObject?>(null); private set
     var reserve by mutableStateOf<JsonObject?>(null); private set
     var checkingServiceUpdates by mutableStateOf(false); private set
+    var dhcpConfig by mutableStateOf<JsonObject?>(null); private set
+    var dhcpError by mutableStateOf<String?>(null); private set
+    var dhcpLoading by mutableStateOf(false); private set
     private var origin: String? = null
     private var selected: String? = null
     private var taskJob: Job? = null
@@ -65,7 +71,10 @@ class GatewayViewModel @Inject constructor(val repository: GatewayRepository, pr
         pageJob?.cancel(); taskJob?.cancel(); selected = id; node = null; content = JsonObject(emptyMap()); task = null; taskMissing = false; page = "overview"
         traffic = emptyList()
         hasQuarterHourTraffic = false
-        if (period == 900) period = 3600
+        period = QUARTER_HOUR
+        dhcpConfig = null
+        dhcpError = null
+        dhcpLoading = false
         refresh()
     }
     fun refresh() = act { repository.refresh(); if (selected != null && inventory.value.enabled) { loadNode(); loadPage(); loadRootPasswordStatus() } }
@@ -97,6 +106,25 @@ class GatewayViewModel @Inject constructor(val repository: GatewayRepository, pr
         if (page == "access" && rootStatus?.first != node?.id) loadRootPasswordStatus()
 
     }
+    internal suspend fun loadDhcpReservations() {
+        val gateway = node ?: return
+        if (!gateway.online) return
+        dhcpLoading = true
+        dhcpError = null
+        try {
+            val configuration = call("GET", "$base/network")
+            if (selected == gateway.id) {
+                dhcpConfig = configuration.takeIf { it["dhcp_reservations"] is JsonArray }
+                dhcpError = null
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            if (selected == gateway.id) dhcpError = errorText(e)
+        } finally {
+            if (selected == gateway.id) dhcpLoading = false
+        }
+    }
     fun selectPage(value: String) {
         if (busy || review != null) return
         pageJob?.cancel(); if (page != value) content = JsonObject(emptyMap()); page = value
@@ -108,12 +136,33 @@ class GatewayViewModel @Inject constructor(val repository: GatewayRepository, pr
     private suspend fun loadTraffic() {
         val gatewayId = selected ?: return
         val seconds = period
-        val result = call("GET", "$base/traffic", query = mapOf("seconds" to listOf(seconds.toString())))
+        val path = "$base/traffic"
+        val result = try {
+            requestTraffic(path, seconds)
+        } catch (error: ApiError) {
+            if (seconds != QUARTER_HOUR || error.status !in listOf(400, 422)) throw error
+            null
+        }
         if (selected != gatewayId || period != seconds) return
-        traffic = result.objects("traffic_history")
-        hasQuarterHourTraffic = (result["available_periods"] as? JsonArray)
-            ?.any { (it as? JsonPrimitive)?.intOrNull == 900 } == true
+        hasQuarterHourTraffic = (result?.get("available_periods") as? JsonArray)
+            ?.any { (it as? JsonPrimitive)?.intOrNull == QUARTER_HOUR } == true
+        if (seconds == QUARTER_HOUR && !hasQuarterHourTraffic) {
+            period = ONE_HOUR
+            val fallback = requestTraffic(path, ONE_HOUR)
+            if (selected == gatewayId && period == ONE_HOUR) traffic = fallback.objects("traffic_history")
+            return
+        }
+        traffic = result?.objects("traffic_history").orEmpty()
     }
+    private suspend fun requestTraffic(path: String, seconds: Int) =
+        call("GET", path, query = mapOf("seconds" to listOf(seconds.toString())))
+
+    internal suspend fun loadActiveSessions(id: String): ActiveSessionSample =
+        repository.panel.json.decodeFromJsonElement(call(
+            "GET", "/api/gateways/${encodeSegment(id)}/active-sessions",
+            query = mapOf("view" to listOf("connections")),
+        ))
+
     suspend fun observe() {
         repository.refresh()
         while (true) {
@@ -134,6 +183,12 @@ class GatewayViewModel @Inject constructor(val repository: GatewayRepository, pr
         review = GatewayReview(result.text("title") ?: title, result, apply, "$cancel/${encodeSegment(token)}")
     }
     fun networkPlan(action: String, data: JsonObject) = act { prepare("Проверка изменений", "$base/network/plan", buildJsonObject { put("action", action); put("data", data) }) }
+    fun deleteDhcpReservation(config: JsonObject, reservation: JsonObject) =
+        networkPlan("dhcp_reservation", buildJsonObject {
+            put("mode", "delete")
+            put("config_hash", config.text("settings_hash"))
+            put("section", reservation.text("id"))
+        })
     fun restartFirewall() = act {
         val config = call("GET", "$base/network")
         val hash = config.text("settings_hash") ?: error("Панель не вернула актуальные настройки firewall")
@@ -159,10 +214,11 @@ class GatewayViewModel @Inject constructor(val repository: GatewayRepository, pr
     fun backupPlan(action: String, id: String? = null) = act {
         prepare(if (action == "restore") "Восстановление настроек" else "Перезагрузка шлюза", "$base/backups/plan", buildJsonObject { put("action", action); id?.let { put("archive_id", it) } }, "$base/backups/apply", "$base/backups/plans")
     }
-    fun confirm() = act {
+    fun confirm(onApplied: (GatewayReview) -> Unit = {}) = act {
         val current = review ?: return@act
         val response = call(current.method, current.applyPath, current.body ?: buildJsonObject { put("plan_token", current.data.text("plan_token")); put("confirmed", true) })
         review = null
+        onApplied(current)
         if (current.data.text("service") == "adguardhome" && current.data.text("action") == "install") adguardInstallTask = response.text("task_id")
         if (response.text("task_id") != null) track(response) else { notice = "Сохранено"; repository.refresh(force = true); if (selected != null) { loadNode(); loadPage() } }
     }
@@ -287,5 +343,5 @@ class GatewayViewModel @Inject constructor(val repository: GatewayRepository, pr
     }
 }
 
-fun gatewayServiceName(id: String) = mapOf("podkop" to "Podkop", "ssclash" to "SSClash-Go", "adguardhome" to "AdGuard Home", "dnsmasq" to "dnsmasq", "firewall" to "Firewall")[id] ?: id
+fun gatewayServiceName(id: String) = mapOf("podkop" to "Podkop", "ssclash" to "SSClash-Go", "adguardhome" to "AdGuard Home", "dnsmasq" to "DNSMasq", "firewall" to "Firewall")[id] ?: id
 fun gatewayActionLabel(action: String) = mapOf("start" to "Запустить", "stop" to "Остановить", "restart" to "Перезапустить", "remove" to "Удалить", "install" to "Установить", "update" to "Обновить", "web_access" to "Изменить доступ")[action] ?: action

@@ -83,6 +83,32 @@ class GatewayFormsTest {
         val dhcp = gatewayDhcpForm(state, "lan"); val data = dhcp.result(values(dhcp), emptyMap())
         assertEquals("lan", data.text("interface")); assertFalse((data["settings"] as JsonObject).containsKey("server"))
     }
+    @Test fun dhcpReservationPrefillsLeaseAndOnlySendsEditableFields() {
+        val lease = obj("""{"id":"not-a-uci-section","hostname":"*","ipaddr":"192.168.1.10","macaddr":"02:12:34:56:78:9a","expires":300}""")
+        val form = gatewayDhcpReservationForm(config(), lease)
+        val data = form.result(values(form), emptyMap())
+        assertEquals(hash, data.text("config_hash"))
+        assertEquals("add", data.text("mode"))
+        assertEquals(
+            obj("""{"name":null,"ip":"192.168.1.10","mac":"02:12:34:56:78:9a"}"""),
+            data["settings"],
+        )
+    }
+    @Test fun editingDhcpReservationRetainsSectionAndLocksSharedIpv6Mac() {
+        val reservation = obj("""{"id":"cfg0001","name":"printer","ip":"192.168.1.10","mac":["02:12:34:56:78:9a","02:12:34:56:78:9b"],"shared_ipv6":true}""")
+        val form = gatewayDhcpReservationForm(config(), reservation = reservation)
+        assertTrue(form.fields.single { it.key == "mac" }.locked)
+        val data = form.result(values(form) + ("ip" to "192.168.1.11"), emptyMap())
+        assertEquals("edit", data.text("mode"))
+        assertEquals("cfg0001", data.text("section"))
+        assertEquals("02:12:34:56:78:9a 02:12:34:56:78:9b", (data["settings"] as JsonObject).text("mac"))
+    }
+    @Test fun staticLeaseRequiresItsReservedIpAndMatchingMac() {
+        val reservation = obj("""{"ip":"192.168.1.10","mac":["02:12:34:56:78:9a","02:12:34:56:78:9b"]}""")
+        assertEquals(reservation, dhcpReservationForLease("192.168.1.10", "02:12:34:56:78:9B", listOf(reservation)))
+        assertNull(dhcpReservationForLease("192.168.1.11", "02:12:34:56:78:9B", listOf(reservation)))
+        assertNull(dhcpReservationForLease("192.168.1.10", "02:12:34:56:78:ff", listOf(reservation)))
+    }
     @Test fun firewallDeletesOnlyEditableRulesAndDoesNotTransmitSpecialTargets() {
         val state = config("""{"firewall":{"defaults":{"input":"REJECT","output":"ACCEPT","forward":"REJECT"},"zones":[],"rules":[{"id":"editable","name":"SSH","proto":"tcp","target":"ACCEPT"},{"id":"special","target":"MARK","set_mark":"123"}]}}""")
         val form = gatewayFirewallForm(state)

@@ -175,7 +175,7 @@ private fun MainShell(terminalSessions: TerminalSessionsViewModel,onLogout: () -
                     onServers={ openTab(Routes.SERVERS) }, onAddServer={ nav.navigate(Routes.operation("POST /api/servers")) },
                     onMonitor={ nav.navigate(Routes.section("monitor")) }, onLogin=onLogout,
                     onGateway={ nav.navigate(Routes.gatewayDetail(it)) }, onGateways={ openTab(Routes.GATEWAYS) },
-                    onEvents={ if (gatewayInventory.enabled) { activeTab=Routes.SETTINGS; nav.navigate(Routes.EVENTS) } else openTab(Routes.EVENTS) }, onEvent={ activeTab=if (gatewayInventory.enabled) Routes.SETTINGS else Routes.EVENTS; nav.navigate(Routes.section("events") + "&recordId=${Uri.encode(it)}") })
+                    onEvents={ if (gatewayInventory.enabled) { activeTab=Routes.SETTINGS; nav.navigate(Routes.EVENTS) } else openTab(Routes.EVENTS) })
             }
             composable(Routes.EVENTS, arguments=listOf(navArgument("section") { type=NavType.StringType; defaultValue="events" })) {
                 NativeSectionScreen("events", onOperation={ nav.navigate(Routes.operation(it)) }, onHistory={ nav.navigate(Routes.TASKS) })

@@ -34,6 +34,7 @@ class ServiceBrowserViewModel @Inject constructor(val panel: NativePanelClient, 
     internal var proxy by mutableStateOf<ServiceBrowserProxy?>(null); private set
     var error by mutableStateOf<String?>(null); private set
     var waiting by mutableStateOf<Int?>(null); private set
+    internal var connection by mutableStateOf(BrowserConnection.PANEL); private set
     private var job: Job? = null
     private var origin: String? = null
     private var control: ServiceBrowserControl? = null
@@ -43,7 +44,7 @@ class ServiceBrowserViewModel @Inject constructor(val panel: NativePanelClient, 
         if (job?.isActive == true || proxy != null) return
         val attempt = ++generation
         job = viewModelScope.launch {
-            error = null; waiting = null
+            error = null; waiting = null; connection = BrowserConnection.PANEL
             try {
                 val current = prefs.baseUrl.first() ?: error("Укажите адрес панели")
                 origin = current
@@ -64,7 +65,12 @@ class ServiceBrowserViewModel @Inject constructor(val panel: NativePanelClient, 
                 fun finish(message: String) { viewModelScope.launch { if (generation == attempt) { stop(); error = message } } }
                 val lifetime = ServiceBrowserControl(panel.httpClient(endpoint), endpoint,
                     token = { panel.renewSocketSession(endpoint) },
-                    changed = { ready, seconds -> viewModelScope.launch { if (generation == attempt) waiting = if (ready) null else seconds } },
+                    changed = { stage, seconds -> viewModelScope.launch {
+                        if (generation == attempt) {
+                            connection = stage
+                            waiting = if (stage == BrowserConnection.READY) null else seconds
+                        }
+                    } },
                     ended = ::finish)
                 control = lifetime
                 withContext(Dispatchers.IO) { lifetime.awaitGateway() }
@@ -151,7 +157,14 @@ fun ServiceBrowserDialog(nodeId: String, serviceId: String, onClose: () -> Unit,
             Column(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
                 if (loading || proxy == null && vm.error == null) LinearProgressIndicator(Modifier.fillMaxWidth())
                 (vm.error ?: webError)?.let { Text(it, Modifier.padding(16.dp), color = MaterialTheme.colorScheme.error) }
-                vm.waiting?.let { Text("Нет ответа от шлюза. Ждём восстановления связи… $it с", Modifier.padding(12.dp)) }
+                if (vm.error == null) {
+                    val status = when (vm.connection) {
+                        BrowserConnection.PANEL -> vm.waiting?.let { "Подключение к панели… $it с" } ?: "Подключение к панели…"
+                        BrowserConnection.GATEWAY -> vm.waiting?.let { "Ждём ответа шлюза… $it с" }
+                        BrowserConnection.READY -> null
+                    }
+                    status?.let { Text(it, Modifier.padding(12.dp)) }
+                }
                 if (proxy == null && vm.error != null) TextButton(onClick = ::reopen, modifier = Modifier.padding(horizontal = 16.dp)) { Text("Открыть заново") }
                 if (proxy != null && ready) AndroidView(modifier = Modifier.fillMaxWidth().weight(1f), onReset = null, onRelease = ::release, factory = { ctx ->
                     WebView(ctx).apply {

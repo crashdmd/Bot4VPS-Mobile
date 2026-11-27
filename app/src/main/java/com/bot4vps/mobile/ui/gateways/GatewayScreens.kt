@@ -104,8 +104,12 @@ fun GatewayDetailScreen(id: String, onBack: () -> Unit, onTerminal: (String) -> 
     ObserveGateways(vm)
     val inventory by vm.inventory.collectAsStateWithLifecycle()
     val node = vm.node
+    val (sessionUpdate, sessionHistory) = rememberGatewaySessions(id, node?.id == id && vm.page == "overview") {
+        vm.loadActiveSessions(id)
+    }
     LaunchedEffect(vm.task, inventory.gateways) { val task = vm.task; if (task != null && task.text("kind") == "openwrt-disconnect" && gatewayTaskSucceeded(task) && inventory.gateways.none { it.id == id }) onBack() }
     var form by remember(id) { mutableStateOf<GatewayForm?>(null) }
+    var dhcpOpen by remember(id) { mutableStateOf(false) }
     var formAction by remember(id) { mutableStateOf("network") }
     var info by remember(id) { mutableStateOf<JsonObject?>(null) }
     var infoTitle by remember { mutableStateOf("") }
@@ -124,8 +128,17 @@ fun GatewayDetailScreen(id: String, onBack: () -> Unit, onTerminal: (String) -> 
         if (uri != null && archive != null) vm.downloadBackup(archive.text("id").orEmpty(), uri)
     }
     fun edit(value: GatewayForm, action: String) { formAction = action; form = value }
-    GatewayReviewDialog(vm)
-    form?.let { current -> GatewayFormDialog(current, vm.busy, vm.error, { form = null }) { data ->
+    GatewayReviewDialog(vm) { applied ->
+        if (applied.data.text("action") == "dhcp_reservation") dhcpOpen = false
+    }
+    if (dhcpOpen && node != null) {
+        GatewayDhcpLeases(
+            node, vm, visible = form == null && vm.review == null,
+            onClose = { dhcpOpen = false },
+            onReserve = { edit(it, "dhcp_reservation") },
+        )
+    }
+    form?.takeIf { vm.review == null }?.let { current -> GatewayFormDialog(current, vm.busy, vm.error, { form = null }) { data ->
         when (formAction) {
             "access" -> vm.saveAccess(data)
             "ssh" -> vm.saveSsh(data)
@@ -168,7 +181,7 @@ fun GatewayDetailScreen(id: String, onBack: () -> Unit, onTerminal: (String) -> 
                                 item(key = "gateway-traffic") {
                                     GatewayTraffic(vm.traffic, node.monitor, vm.period, vm.hasQuarterHourTraffic, vm::trafficPeriod)
                                 }
-                                item(key = "gateway-clients") { GatewayClients(node.monitor) }
+                                item(key = "gateway-active-sessions") { GatewayActiveSessions(node.id, sessionUpdate, sessionHistory) }
                                 item(key = "gateway-wireguard") { GatewayWireguard(node.monitor) }
                             }
                             "network" -> {
@@ -207,7 +220,26 @@ fun GatewayDetailScreen(id: String, onBack: () -> Unit, onTerminal: (String) -> 
                                     Text(if (vm.checkingServiceUpdates) "Проверяю установленные версии и совместимые релизы…" else vm.content.number("checked_at")?.let { "Проверено в ${epochTime(it)}" } ?: "Версии ещё не проверены", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     if (!node.controls) Text("Управление недоступно. Проверьте связь и интеграцию во вкладке «Доступ».", style = MaterialTheme.typography.bodySmall)
                                 } }
-                                items(node.services, key = { it.text("id").orEmpty() }) { service -> GatewayServiceCard(node, service, vm, edit = { value, action -> edit(value, action) }, guide = { infoTitle = "AdGuard Home"; info = it }, browser = { browserService = it }) }
+                                val services = node.services
+                                val firewall = services.indexOfFirst { it.text("id") == "firewall" }
+                                val dnsmasq = services.indexOfFirst { it.text("id") == "dnsmasq" }
+                                val dhcpPosition = (if (firewall >= 0) firewall else dnsmasq) + 1
+                                for (index in 0..services.size) {
+                                    if (index == dhcpPosition) {
+                                        item(key = "gateway-dhcp-leases") {
+                                            PanelCard {
+                                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                                    Text("DHCP-аренды", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                                                    TextButton(onClick = { dhcpOpen = true }, enabled = !vm.busy) { Text("Открыть") }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    val service = services.getOrNull(index) ?: continue
+                                    item(key = "gateway-service-${service.text("id")}") {
+                                        GatewayServiceCard(node, service, vm, edit = { value, action -> edit(value, action) }, guide = { infoTitle = "AdGuard Home"; info = it }, browser = { browserService = it })
+                                    }
+                                }
                                 item { GatewayReserve(vm) }
                             }
                             "packages" -> { item { GatewayPackages(vm, node.controls) } }
@@ -337,15 +369,110 @@ private fun GatewayLineChart(history: List<JsonObject>, role: String) {
 }
 
 @Composable
-private fun GatewayClients(monitor: JsonObject) {
-    var query by remember { mutableStateOf("") }; var count by remember { mutableIntStateOf(20) }
-    val rows = monitor.objects("clients").filter { "${it.text("hostname")} ${it.text("ipaddr")} ${it.text("macaddr")}".contains(query, ignoreCase = true) }
-    PanelCard("Клиенты сети · ${monitor.objects("clients").size}") {
-        OutlinedTextField(query, { query = it; count = 20 }, label = { Text("Имя, IP или MAC") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        rows.take(count).forEach { row -> InfoRow(row.text("hostname") ?: "Без имени", "${row.text("ipaddr").orEmpty()}\n${row.text("macaddr").orEmpty()}") }
-        if (rows.isEmpty()) Text("Клиенты не найдены", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        if (rows.size > count) TextButton(onClick = { count += 20 }) { Text("Показать ещё") }
+private fun GatewayDhcpLeases(node: Gateway, vm: GatewayViewModel, visible: Boolean, onClose: () -> Unit, onReserve: (GatewayForm) -> Unit) {
+    var static by remember(node.id) { mutableStateOf(false) }
+    var query by remember(node.id, static) { mutableStateOf("") }
+    var count by remember(node.id, static) { mutableIntStateOf(20) }
+    var retry by remember(node.id) { mutableIntStateOf(0) }
+    LaunchedEffect(node.id, node.online, retry) { vm.loadDhcpReservations() }
+    if (!visible) return
+    val monitor = node.monitor
+    val leases = monitor.objects("clients")
+    val capability = (monitor["capabilities"] as? JsonObject)?.get("clients") as? JsonObject
+    val available = capability?.text("available")?.toBooleanStrictOrNull()
+        ?: (monitor["clients"] is JsonArray)
+    val config = vm.dhcpConfig
+    val reservations = config?.objects("dhcp_reservations").orEmpty()
+    val canReserve = config != null && config.text("settings_hash") != null && node.controls && !vm.busy && !vm.dhcpLoading && vm.dhcpError == null
+    val rows = (if (static) reservations else leases).filter { row ->
+        val name = row.text(if (static) "name" else "hostname").orEmpty()
+        val ip = row.text(if (static) "ip" else "ipaddr").orEmpty()
+        val mac = if (static) row.reservationMacs().joinToString(", ") else row.text("macaddr").orEmpty()
+        listOf(name, ip, mac).any { it.contains(query, ignoreCase = true) }
     }
+    PanelAlertDialog(
+        onDismissRequest = { if (!vm.busy) onClose() },
+        title = { Text("DHCP-аренды") },
+        confirmButton = { TextButton(onClick = onClose, enabled = !vm.busy) { Text("Закрыть") } },
+        text = { Column(Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(selected = !static, onClick = { static = false }, label = { Text("Текущие") })
+            FilterChip(selected = static, onClick = { static = true }, label = { Text("Статические") })
+        }
+        if (canReserve && config != null) {
+            PanelSecondaryButton(onClick = { onReserve(gatewayDhcpReservationForm(config)) }) {
+                Text("Закрепить IPv4 вручную")
+            }
+        }
+        val dhcpError = vm.dhcpError
+        when {
+            !node.online -> Text("Шлюз недоступен. Показаны последние данные.", style = MaterialTheme.typography.bodySmall)
+            vm.dhcpLoading -> Text("Загружаем статические аренды…", style = MaterialTheme.typography.bodySmall)
+            dhcpError != null -> {
+                Text("Не удалось определить тип аренды: $dhcpError", style = MaterialTheme.typography.bodySmall)
+                TextButton(onClick = { retry++ }) { Text("Повторить") }
+            }
+            config == null -> Text("Тип аренды недоступен. Обновите интеграцию Bot4VPS во вкладке «Доступ».", style = MaterialTheme.typography.bodySmall)
+        }
+        val emptyMessage = when {
+            static && config == null -> null
+            static && reservations.isEmpty() -> "Нет статических IPv4-аренд"
+            !static && !available -> "Данные об аренде IPv4 недоступны"
+            !static && leases.isEmpty() -> "Нет выданных IPv4-адресов"
+            else -> null
+        }
+        if (emptyMessage != null) Text(emptyMessage, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (emptyMessage != null || static && config == null) return@Column
+        OutlinedTextField(query, { query = it; count = 20 }, label = { Text("Имя, IP или MAC") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        rows.take(count).forEach { row ->
+            val name = row.text(if (static) "name" else "hostname")?.takeIf { it.isNotBlank() && it != "*" }
+            val ip = row.text(if (static) "ip" else "ipaddr").orEmpty()
+            val mac = if (static) row.reservationMacs().joinToString(", ") else row.text("macaddr").orEmpty()
+            val typeKnown = config != null && !vm.dhcpLoading && dhcpError == null
+            val fixed = static || typeKnown && dhcpReservationForLease(ip, mac, reservations) != null
+            val canPin = canReserve && !fixed && mac.isNotBlank() && ip.isNotBlank() && reservations.none {
+                it.text("ip") == ip || it.reservationMacs().any { value -> value.equals(mac, ignoreCase = true) }
+            }
+            Row(Modifier.fillMaxWidth().height(60.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Column(Modifier.weight(1f)) {
+                    Text(name ?: "Без имени", style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(ip.ifBlank { "—" }, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(mac.ifBlank { "—" }, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                Column(
+                    Modifier.width(96.dp).fillMaxHeight().padding(top = if (fixed) 0.dp else 3.dp),
+                    verticalArrangement = if (fixed) Arrangement.Center else Arrangement.Top,
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                        if (fixed || typeKnown) {
+                            Canvas(Modifier.size(7.dp)) {
+                                drawCircle(if (fixed) Color(0xFF3B82F6) else Color(0xFFEAB308))
+                            }
+                        }
+                        Text(if (fixed) "Статическая" else if (typeKnown) "Аренда" else "—",
+                            style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false)
+                    }
+                    if (canPin && config != null) {
+                        TextButton(
+                            onClick = { onReserve(gatewayDhcpReservationForm(config, row)) },
+                            contentPadding = PaddingValues(horizontal = 6.dp),
+                        ) { Text("Закрепить IP", style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false) }
+                    }
+                }
+                if (canReserve && config != null && static) {
+                    IconButton(onClick = { onReserve(gatewayDhcpReservationForm(config, reservation = row)) }, modifier = Modifier.size(36.dp)) {
+                        Icon(Icons.Default.Edit, "Изменить статическую аренду ${name ?: ip}", Modifier.size(19.dp))
+                    }
+                    IconButton(onClick = { vm.deleteDhcpReservation(config, row) }, modifier = Modifier.size(36.dp)) {
+                        Icon(Icons.Default.DeleteOutline, "Удалить статическую аренду ${name ?: ip}", Modifier.size(19.dp), tint = MaterialTheme.colorScheme.error)
+                    }
+                }
+            }
+        }
+        if (rows.isEmpty()) Text("Аренды не найдены", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (rows.size > count) TextButton(onClick = { count += 20 }) { Text("Показать ещё") }
+        } },
+    )
 }
 
 @Composable
@@ -414,7 +541,7 @@ private fun GatewayServiceCard(node: Gateway, service: JsonObject, vm: GatewayVi
                     if (id == "firewall") edit(gatewayFirewallForm(config), "firewall")
                     else {
                         val instances = config.objects("dns")
-                        require(instances.isNotEmpty()) { "dnsmasq не настроен" }
+                        require(instances.isNotEmpty()) { "DNSMasq не настроен" }
                         edit(gatewayDnsForm(config, instances.first()), "dns")
                     }
                 }
@@ -486,7 +613,7 @@ private fun GatewayInstallDialog(initial: String, vm: GatewayViewModel, dismiss:
 }
 
 @Composable
-fun GatewayReviewDialog(vm: GatewayViewModel) {
+fun GatewayReviewDialog(vm: GatewayViewModel, onApplied: (GatewayReview) -> Unit = {}) {
     val review = vm.review ?: return
     PanelAlertDialog(onDismissRequest = { if (!vm.busy) vm.cancelReview() }, title = { Text(review.title) }, text = {
         Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -506,7 +633,7 @@ fun GatewayReviewDialog(vm: GatewayViewModel) {
             if (data.flag("package_scripts")) Text("Установка запускает служебные скрипты пакета на роутере.", style = MaterialTheme.typography.bodySmall)
             vm.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         }
-    }, confirmButton = { TextButton(onClick = vm::confirm, enabled = !vm.busy) { Text(if (vm.busy) "Подождите…" else "Подтвердить") } }, dismissButton = { TextButton(onClick = vm::cancelReview, enabled = !vm.busy) { Text("Отмена") } })
+    }, confirmButton = { TextButton(onClick = { vm.confirm(onApplied) }, enabled = !vm.busy) { Text(if (vm.busy) "Подождите…" else "Подтвердить") } }, dismissButton = { TextButton(onClick = vm::cancelReview, enabled = !vm.busy) { Text("Отмена") } })
 }
 
 @Composable

@@ -17,12 +17,14 @@ internal class BrowserRecovery(private val now: () -> Long = { System.nanoTime()
     @Synchronized fun remaining(): Long = (timeoutMillis - (now() - lastReply)).coerceAtLeast(0)
 }
 
+internal enum class BrowserConnection { PANEL, GATEWAY, READY }
+
 /** A window owns one control socket; service pages never see its identity. */
 internal class ServiceBrowserControl(
     client: OkHttpClient,
     private val endpoint: HttpUrl,
     private val token: suspend () -> String,
-    private val changed: (Boolean, Int) -> Unit,
+    private val changed: (BrowserConnection, Int) -> Unit,
     private val ended: (String) -> Unit,
     private val recovery: BrowserRecovery = BrowserRecovery(),
 ) : Closeable {
@@ -51,7 +53,12 @@ internal class ServiceBrowserControl(
                 if (connected && now() - lastPing >= 5_000) {
                     socket?.send("{\"type\":\"browser_ping\"}"); lastPing = now()
                 }
-                changed(connected && gateway, ((recovery.remaining() + 999) / 1000).toInt())
+                val connection = when {
+                    !connected -> BrowserConnection.PANEL
+                    !gateway -> BrowserConnection.GATEWAY
+                    else -> BrowserConnection.READY
+                }
+                changed(connection, ((recovery.remaining() + 999) / 1000).toInt())
                 delay(250)
             }
         }

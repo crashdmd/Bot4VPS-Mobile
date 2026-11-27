@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
@@ -18,7 +19,9 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import com.bot4vps.mobile.data.model.*
+import com.bot4vps.mobile.notifications.PhoneNotificationService
 import com.bot4vps.mobile.ui.components.*
+import com.bot4vps.mobile.ui.control.EventDetailsDialog
 import com.bot4vps.mobile.ui.settings.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.font.FontWeight
@@ -29,11 +32,14 @@ import java.time.LocalTime
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(onBack: (() -> Unit)? = null, onServer: (String) -> Unit, onServers: () -> Unit, onAddServer: () -> Unit,
-    onMonitor: () -> Unit, onGateway: (String) -> Unit = {}, onGateways: () -> Unit = {}, onEvents: () -> Unit, onEvent: (String) -> Unit, onLogin: () -> Unit, viewModel: DashboardViewModel = hiltViewModel(), updates: UpdatesViewModel = hiltViewModel()) {
+    onMonitor: () -> Unit, onGateway: (String) -> Unit = {}, onGateways: () -> Unit = {}, onEvents: () -> Unit, onLogin: () -> Unit, viewModel: DashboardViewModel = hiltViewModel(), updates: UpdatesViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val gateways by viewModel.gateways.inventory.collectAsStateWithLifecycle()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val listState = rememberLazyListState()
+    val context = LocalContext.current
+    var selectedEvent by remember { mutableStateOf<JsonObject?>(null) }
+    selectedEvent?.let { EventDetailsDialog(it, onDismiss = { selectedEvent = null }) }
     LaunchedEffect(state.update) { updates.acceptSnapshot(state.update) }
     LaunchedEffect(lifecycle, viewModel) { lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) { viewModel.observe() } }
     UpdateDialogs(updates)
@@ -73,7 +79,10 @@ fun DashboardScreen(onBack: (() -> Unit)? = null, onServer: (String) -> Unit, on
             item(key = "events") { PanelCard("Журнал уведомлений") {
                 state.eventsError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 if (state.events.isEmpty()) Text(if (state.loading) "Загрузка событий…" else "Событий пока нет", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                state.events.forEach { event -> Row(Modifier.fillMaxWidth().clickable { event.text("id")?.let(onEvent) }.padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                state.events.forEach { event -> Row(Modifier.fillMaxWidth().clickable {
+                    selectedEvent = event
+                    viewModel.markEventRead(event) { id -> PhoneNotificationService.dismissEvents(context, setOf(id)) }
+                }.padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(event.text("message") ?: event.text("title") ?: "Событие", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, maxLines = 2)
                     Text(displayTime(event.text("timestamp")), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } }

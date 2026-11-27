@@ -247,13 +247,7 @@ fun NativeRecordSheet(selected: Pair<JsonObject, String>, viewModel: NativeContr
     val state by viewModel.state.collectAsState()
     val (record, collection) = selected
     if (collection == "events") {
-        PanelAlertDialog(onDismissRequest = onDismiss, title = { Text("Событие") },
-            text = { Column(Modifier.fillMaxWidth().heightIn(max = 440.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(record.text("title") ?: "Событие", style = MaterialTheme.typography.titleMedium)
-                Text(displayTime(record.text("timestamp")), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                SelectionContainer { Text(record.text("message").orEmpty()) }
-                record["details"]?.let { NativeDataView(it, state.contract?.labels.orEmpty()) }
-            } }, confirmButton = { TextButton(onClick = onDismiss) { Text("Закрыть") } })
+        EventDetailsDialog(record, onDismiss, state.contract?.labels.orEmpty())
         return
     }
     com.bot4vps.mobile.ui.components.PanelModalBottomSheet(onDismissRequest = onDismiss) {
@@ -265,6 +259,17 @@ fun NativeRecordSheet(selected: Pair<JsonObject, String>, viewModel: NativeContr
             }
         }
     }
+}
+
+@Composable
+internal fun EventDetailsDialog(record: JsonObject, onDismiss: () -> Unit, labels: Map<String, String> = emptyMap()) {
+    PanelAlertDialog(onDismissRequest = onDismiss, title = { Text("Событие") },
+        text = { Column(Modifier.fillMaxWidth().heightIn(max = 440.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(record.text("title") ?: "Событие", style = MaterialTheme.typography.titleMedium)
+            Text(displayTime(record.text("timestamp")), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            SelectionContainer { Text(record.text("message").orEmpty()) }
+            record["details"]?.let { NativeDataView(it, labels) }
+        } }, confirmButton = { TextButton(onClick = onDismiss) { Text("Закрыть") } })
 }
 
 @Composable

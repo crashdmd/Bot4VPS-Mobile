@@ -181,6 +181,29 @@ fun gatewayDhcpForm(config: JsonObject, iface: String): GatewayForm {
         hint = "В одном сегменте должен работать один DHCP-сервер. Остальные опции, статические аренды и IPv6 сохранятся.", result = { values, _ -> buildJsonObject { put("config_hash", config.text("settings_hash")); put("interface", iface); put("settings", gatewayFields(values, listOf("ignore", "start", "limit", "leasetime", "dns"), setOf("dns"))) } })
 }
 
+fun gatewayDhcpReservationForm(config: JsonObject, lease: JsonObject? = null, reservation: JsonObject? = null) = GatewayForm(
+    if (reservation == null) "Закрепить IPv4-адрес" else "Изменить статическую DHCP-аренду",
+    listOf(
+        field("name", "Имя устройства"),
+        field(
+            "mac", "MAC-адрес", required = reservation == null || reservation.reservationMacs().isNotEmpty(),
+            hint = if (reservation?.flag("shared_ipv6") == true) "MAC используется также для IPv6" else "Несколько адресов можно указать через пробел",
+        ).copy(locked = reservation?.flag("shared_ipv6") == true),
+        field("ip", "IPv4-адрес", required = true, hint = "Например, 192.168.1.10"),
+    ),
+    buildJsonObject {
+        (reservation?.text("name") ?: lease?.text("hostname")?.takeIf { it != "*" })?.let { put("name", it) }
+        (reservation?.reservationMacs()?.joinToString(" ") ?: lease?.text("macaddr"))?.let { put("mac", it) }
+        (reservation?.text("ip") ?: lease?.text("ipaddr"))?.let { put("ip", it) }
+    },
+    result = { values, _ -> buildJsonObject {
+        put("config_hash", config.text("settings_hash"))
+        put("mode", if (reservation == null) "add" else "edit")
+        reservation?.text("id")?.let { put("section", it) }
+        put("settings", gatewayFields(values, listOf("name", "mac", "ip")))
+    } },
+)
+
 fun gatewayDnsForm(config: JsonObject, instance: JsonObject) = GatewayForm("DNS · ${instance.text("id")}", listOf(field("port", "Порт DNS", "53", required = true), field("cachesize", "Размер кэша", "150", required = true), field("server", "Внешние DNS-серверы", list = true, hint = "По одному на строку: 1.1.1.1, 127.0.0.1#5353, /example.org/192.168.1.2"), field("domain", "Локальный домен"), field("local", "Локальная зона"), toggle("noresolv", "Использовать только указанные DNS"), toggle("rebind_protection", "Защита от DNS rebinding", "1"), toggle("domainneeded", "Не отправлять короткие имена наружу"), toggle("boguspriv", "Не отправлять частные адреса наружу", "1")), instance,
     hint = "Порт 0 отключает только DNS. DNS подключения WAN настраивается отдельно.", result = { values, _ -> buildJsonObject { put("config_hash", config.text("settings_hash")); put("section", instance.text("id")); put("settings", gatewayFields(values, listOf("port", "cachesize", "server", "domain", "local", "noresolv", "rebind_protection", "domainneeded", "boguspriv"), setOf("server"))) } })
 

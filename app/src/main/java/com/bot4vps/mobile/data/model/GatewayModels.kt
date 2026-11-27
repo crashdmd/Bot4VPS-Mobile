@@ -20,6 +20,15 @@ fun decodeGateways(value: JsonObject): GatewayInventory {
 }
 
 fun JsonObject.strings(key: String): List<String> = (this[key] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull }.orEmpty()
+fun JsonObject.reservationMacs(): List<String> = text("mac")?.split(Regex("[\\s,]+"))
+    ?.filter(String::isNotBlank) ?: strings("mac")
+
+fun dhcpReservationForLease(ip: String, mac: String, reservations: List<JsonObject>): JsonObject? =
+    reservations.firstOrNull { reservation ->
+        val macs = reservation.reservationMacs()
+        ip.isNotBlank() && reservation.text("ip") == ip &&
+            (macs.isEmpty() || macs.any { it.equals(mac, ignoreCase = true) })
+    }
 fun gatewayList(value: String) = JsonArray(value.split(Regex("[\\s,]+")).filter { it.isNotBlank() }.map(::JsonPrimitive))
 fun gatewayText(value: JsonElement?): String = when (value) { is JsonArray -> value.joinToString("\n") { gatewayText(it) }; is JsonPrimitive -> value.contentOrNull.orEmpty(); else -> "" }
 
